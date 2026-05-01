@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Secure Internet Poker</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0a0a0a;
+    --surface:  #111111;
+    --card:     #181818;
+    --border:   #2a2a2a;
+    --border2:  #3a3a3a;
+    --gold:     #c9a84c;
+    --gold2:    #e8c96a;
+    --red:      #c0392b;
+    --green:    #27ae60;
+    --text:     #e8e0d0;
+    --muted:    #888880;
+    --mono:     'IBM Plex Mono', monospace;
+    --serif:    'Playfair Display', serif;
+    --sans:     'IBM Plex Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  /* felt texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.008) 2px, rgba(255,255,255,0.008) 4px),
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,255,255,0.004) 2px, rgba(255,255,255,0.004) 4px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; width: 100%; max-width: 560px; }
+
+  /* ── screens ── */
+  .screen { display: none; animation: fadeIn 0.4s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── header logo ── */
+  .logo {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+  .logo-suit { font-size: 1.4rem; color: var(--gold); letter-spacing: 0.5rem; }
+  .logo h1 {
+    font-family: var(--serif);
+    font-size: 2rem;
+    color: var(--gold2);
+    letter-spacing: 0.05em;
+    margin: 0.25rem 0 0.1rem;
+  }
+  .logo p { font-size: 0.7rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); font-family: var(--mono); }
+
+  /* ── panel ── */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2rem;
+    margin-bottom: 1rem;
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--gold);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  /* ── form elements ── */
+  label { display: block; font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); font-family: var(--mono); margin-bottom: 0.4rem; }
+  input[type="text"] {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input[type="text"]:focus { border-color: var(--gold); }
+  .form-group { margin-bottom: 1.25rem; }
+
+  /* ── radio sig choice ── */
+  .sig-options { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .sig-opt {
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .sig-opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .sig-opt:hover { border-color: var(--border2); }
+  .sig-opt.selected { border-color: var(--gold); background: rgba(201,168,76,0.06); }
+  .sig-opt-name { font-family: var(--serif); font-size: 1.1rem; color: var(--gold2); }
+  .sig-opt-desc { font-size: 0.68rem; color: var(--muted); font-family: var(--mono); margin-top: 0.2rem; }
+
+  /* ── buttons ── */
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 0.85rem;
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold2);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background 0.2s, color 0.2s;
+    margin-top: 0.5rem;
+  }
+  .btn:hover { background: rgba(201,168,76,0.12); }
+  .btn:active { background: rgba(201,168,76,0.2); }
+  .btn-danger { border-color: var(--red); color: #e57373; }
+  .btn-danger:hover { background: rgba(192,57,43,0.12); }
+  .btn-sm { padding: 0.5rem 1rem; width: auto; font-size: 0.65rem; }
+
+  /* ── crypto log ── */
+  .crypto-log {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 0.75rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--muted);
+    margin-top: 1rem;
+    max-height: 130px;
+    overflow-y: auto;
+    line-height: 1.8;
+  }
+  .crypto-log .log-ok { color: #4caf7d; }
+  .crypto-log .log-info { color: var(--gold); }
+  .crypto-log .log-key { color: #7ec8e3; word-break: break-all; }
+
+  /* ── status badge ── */
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.2rem 0.5rem;
+    border-radius: 2px;
+  }
+  .badge-wait { background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid rgba(201,168,76,0.3); }
+  .badge-ok   { background: rgba(39,174,96,0.15); color: #4caf7d; border: 1px solid rgba(39,174,96,0.3); }
+  .badge-lose { background: rgba(192,57,43,0.15); color: #e57373; border: 1px solid rgba(192,57,43,0.3); }
+
+  /* ── lobby ── */
+  .player-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.5rem; }
+  .player-slot {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .player-slot .slot-icon { font-size: 1.4rem; margin-bottom: 0.4rem; }
+  .player-slot .slot-name { font-family: var(--serif); font-size: 1rem; color: var(--gold2); margin-bottom: 0.3rem; }
+  .player-slot .slot-status { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+
+  /* ── round progress ── */
+  .round-track { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .round-pip {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .round-pip.active { border-color: var(--gold); color: var(--gold); }
+  .round-pip.done   { background: rgba(201,168,76,0.15); border-color: var(--gold); color: var(--gold2); }
+  .round-line { flex: 1; height: 1px; background: var(--border); }
+
+  /* ── number cards ── */
+  .number-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 1.25rem 0; }
+  .num-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1.25rem 0.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .num-card:hover { border-color: var(--border2); }
+  .num-card.selected { border-color: var(--gold); background: rgba(201,168,76,0.08); }
+  .num-card .num-val {
+    font-family: var(--serif);
+    font-size: 2rem;
+    color: var(--gold2);
+    display: block;
+  }
+  .num-card .num-label { font-family: var(--mono); font-size: 0.6rem; color: var(--muted); margin-top: 0.2rem; }
+
+  /* ── results table ── */
+  .results-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 0.75rem; }
+  .results-table th {
+    text-align: left;
+    color: var(--muted);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0 0 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .results-table td { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+  .results-table .win  { color: #4caf7d; }
+  .results-table .lose { color: #e57373; }
+  .results-table .tie  { color: var(--gold); }
+
+  /* ── winner banner ── */
+  .winner-banner {
+    text-align: center;
+    padding: 2rem 1rem;
+    border: 1px solid var(--gold);
+    background: rgba(201,168,76,0.05);
+    border-radius: 2px;
+    margin-bottom: 1rem;
+  }
+  .winner-banner .suit-row { font-size: 1.5rem; letter-spacing: 0.4rem; color: var(--gold); margin-bottom: 0.75rem; }
+  .winner-banner h2 { font-family: var(--serif); font-size: 1.6rem; color: var(--gold2); margin-bottom: 0.3rem; }
+  .winner-banner p { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+  .spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--border2);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; margin-bottom: 0.5rem; }
+  .info-row .label { color: var(--muted); font-family: var(--mono); font-size: 0.65rem; }
+  .info-row .value { font-family: var(--mono); color: var(--text); }
+
+  #waiting-msg { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); text-align: center; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══════════════════════════════════════════════════
+       SCREEN 1 — SETUP
+  ════════════════════════════════════════════════════ -->
+  <div class="screen active" id="screen-setup">
+    <div class="logo">
+      <div class="logo-suit">♠ ♥ ♦ ♣</div>
+      <h1>Secure Poker</h1>
+      <p>CPSC 352 · Cryptographic Protocol</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Player Registration</div>
+
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="player-name" placeholder="Enter player name" />
+      </div>
+
+      <div class="form-group">
+        <label>Digital Signature Algorithm</label>
+        <div class="sig-options">
+          <label class="sig-opt selected" id="opt-rsa" onclick="selectSig('RSA')">
+            <input type="radio" name="sig" value="RSA" checked />
+            <div class="sig-opt-name">RSA</div>
+            <div class="sig-opt-desc">2048-bit key pair</div>
+          </label>
+          <label class="sig-opt" id="opt-dsa" onclick="selectSig('DSA')">
+            <input type="radio" name="sig" value="DSA" />
+            <div class="sig-opt-name">DSA</div>
+            <div class="sig-opt-desc">FIPS 186-4 standard</div>
+          </label>
+        </div>
+      </div>
+
+      <button class="btn" onclick="doSetup()">Generate Keys &amp; Connect</button>
+
+      <div class="crypto-log" id="setup-log" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       SCREEN 2 — LOBBY
+  ════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-lobby">
+    <div class="logo">
+      <div class="logo-suit">♠ ♥ ♦ ♣</div>
+      <h1>Secure Poker</h1>
+      <p>CPSC 352 · Cryptographic Protocol</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Session Established</div>
+
+      <div class="info-row">
+        <span class="label">Player</span>
+        <span class="value" id="lobby-name">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Signature</span>
+        <span class="value" id="lobby-sig">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Session Key</span>
+        <span class="value" id="lobby-session">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Status</span>
+        <span class="badge badge-ok">Authenticated</span>
+      </div>
+
+      <hr class="divider" />
+      <div class="panel-title" style="margin-bottom:1rem;">Waiting Room</div>
+
+      <div class="player-slots">
+        <div class="player-slot">
+          <div class="slot-icon">♠</div>
+          <div class="slot-name" id="lobby-p1">—</div>
+          <div class="slot-status"><span class="badge badge-ok">Ready</span></div>
+        </div>
+        <div class="player-slot">
+          <div class="slot-icon">♥</div>
+          <div class="slot-name" id="lobby-p2">Waiting...</div>
+          <div class="slot-status"><span class="badge badge-wait">Pending</span></div>
+        </div>
+      </div>
+
+      <div id="waiting-msg"><span class="spinner"></span>Waiting for second player to connect...</div>
+      <button class="btn" id="start-game-btn" style="display:none;" onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       SCREEN 3 — GAME
+  ════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-game">
+    <div class="logo">
+      <div class="logo-suit">♠ ♥ ♦ ♣</div>
+      <h1>Secure Poker</h1>
+      <p>CPSC 352 · Cryptographic Protocol</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Round Progress</div>
+      <div class="round-track">
+        <div class="round-pip active" id="pip-1">1</div>
+        <div class="round-line"></div>
+        <div class="round-pip" id="pip-2">2</div>
+        <div class="round-line"></div>
+        <div class="round-pip" id="pip-3">3</div>
+      </div>
+
+      <div class="info-row">
+        <span class="label">Round</span>
+        <span class="value" id="round-label">1 of 3</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Your score</span>
+        <span class="value" id="score-display">0 wins</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Your Numbers — Choose One</div>
+      <p style="font-size:0.7rem; color:var(--muted); font-family:var(--mono); margin-bottom:0.5rem;">
+        House sent these numbers (AES-encrypted, signed by house). Pick wisely.
+      </p>
+
+      <div class="number-grid" id="number-grid">
+        <!-- filled by JS -->
+      </div>
+
+      <button class="btn" id="submit-btn" onclick="submitChoice()" disabled>Submit Choice</button>
+      <div class="crypto-log" id="game-log" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════
+       SCREEN 4 — RESULTS
+  ════════════════════════════════════════════════════ -->
+  <div class="screen" id="screen-results">
+    <div class="logo">
+      <div class="logo-suit">♠ ♥ ♦ ♣</div>
+      <h1>Secure Poker</h1>
+      <p>CPSC 352 · Cryptographic Protocol</p>
+    </div>
+
+    <div class="winner-banner" id="winner-banner">
+      <div class="suit-row">♠ ♥ ♦ ♣</div>
+      <h2 id="winner-name">—</h2>
+      <p id="winner-sub">—</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Round Summary</div>
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th>Round</th>
+            <th>Your pick</th>
+            <th>Opponent</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Session Teardown</div>
+      <div class="info-row">
+        <span class="label">Session key</span>
+        <span class="value" id="teardown-key">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Key status</span>
+        <span class="badge badge-lose" id="teardown-status">Destroyed</span>
+      </div>
+      <p style="font-size:0.68rem; color:var(--muted); font-family:var(--mono); margin-top:0.75rem;">
+        Session key has been securely wiped from memory. No forward secrets remain.
+      </p>
+    </div>
+
+    <button class="btn" onclick="resetGame()">Play Again</button>
+  </div>
+
+</div>
+
+<script>
+  /* ── state ── */
+  let state = {
+    playerName: '',
+    sigAlgo: 'RSA',
+    sessionKey: '',
+    publicKey: '',
+    currentRound: 0,
+    scores: [0, 0],
+    roundNumbers: [],
+    roundHistory: [],
+    selectedNum: null,
+  };
+
+  /* ── sig selector ── */
+  function selectSig(algo) {
+    state.sigAlgo = algo;
+    document.getElementById('opt-rsa').classList.toggle('selected', algo === 'RSA');
+    document.getElementById('opt-dsa').classList.toggle('selected', algo === 'DSA');
+  }
+
+  /* ── screen nav ── */
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  /* ── fake hex ── */
+  function fakeHex(len) {
+    return Array.from({length: len}, () => Math.floor(Math.random()*16).toString(16)).join('');
+  }
+
+  function shortKey(hex) { return hex.slice(0,8) + '...' + hex.slice(-4); }
+
+  /* ── log helper ── */
+  function logLine(elId, cls, text) {
+    const el = document.getElementById(elId);
+    el.style.display = 'block';
+    el.innerHTML += `<span class="${cls}">${text}</span>\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* ── SETUP ── */
+  async function doSetup() {
+    const name = document.getElementById('player-name').value.trim();
+    if (!name) { alert('Please enter your name.'); return; }
+    state.playerName = name;
+
+    const logEl = 'setup-log';
+    document.getElementById(logEl).innerHTML = '';
+
+    logLine(logEl, 'log-info', `[1/4] Generating ${state.sigAlgo} key pair...`);
+    await delay(600);
+
+    const privKey = fakeHex(64);
+    state.publicKey = fakeHex(64);
+    logLine(logEl, 'log-key', `  pub  : ${shortKey(state.publicKey)}`);
+    logLine(logEl, 'log-key', `  priv : ${shortKey(privKey)} (kept local)`);
+    await delay(500);
+
+    logLine(logEl, 'log-info', `[2/4] Generating AES-256 session key...`);
+    await delay(400);
+    state.sessionKey = fakeHex(64);
+    logLine(logEl, 'log-key', `  key  : ${shortKey(state.sessionKey)}`);
+    await delay(400);
+
+    logLine(logEl, 'log-info', `[3/4] Encrypting session key with house public key...`);
+    await delay(500);
+    logLine(logEl, 'log-ok',   `  encrypted session key → sent to house`);
+    await delay(400);
+
+    logLine(logEl, 'log-info', `[4/4] Sending public key + signature to house...`);
+    await delay(500);
+    logLine(logEl, 'log-ok',   `  ✓ Authentication complete. Session established.`);
+    await delay(700);
+
+    /* populate lobby */
+    document.getElementById('lobby-name').textContent = state.playerName;
+    document.getElementById('lobby-sig').textContent = state.sigAlgo + ' / 2048-bit';
+    document.getElementById('lobby-session').textContent = shortKey(state.sessionKey);
+    document.getElementById('lobby-p1').textContent = state.playerName;
+    showScreen('screen-lobby');
+
+    /* simulate second player joining after 2.5s */
+    setTimeout(() => {
+      document.getElementById('lobby-p2').textContent = 'Opponent';
+      document.querySelector('#screen-lobby .player-slots .player-slot:last-child .slot-status').innerHTML =
+        '<span class="badge badge-ok">Ready</span>';
+      document.getElementById('waiting-msg').style.display = 'none';
+      document.getElementById('start-game-btn').style.display = 'block';
+    }, 2500);
+  }
+
+  /* ── LOBBY → GAME ── */
+  function startGame() {
+    state.currentRound = 1;
+    state.scores = [0, 0];
+    state.roundHistory = [];
+    loadRound();
+    showScreen('screen-game');
+  }
+
+  function loadRound() {
+    /* update pips */
+    for (let i = 1; i <= 3; i++) {
+      const pip = document.getElementById(`pip-${i}`);
+      pip.classList.remove('active','done');
+      if (i < state.currentRound)  pip.classList.add('done');
+      if (i === state.currentRound) pip.classList.add('active');
+    }
+    document.getElementById('round-label').textContent = `${state.currentRound} of 3`;
+    document.getElementById('score-display').textContent = `${state.scores[0]} win${state.scores[0]!==1?'s':''}`;
+
+    /* house sends 3 numbers */
+    state.roundNumbers = Array.from({length:3}, () => Math.floor(Math.random()*15)+1);
+    state.selectedNum = null;
+
+    const grid = document.getElementById('number-grid');
+    grid.innerHTML = '';
+    state.roundNumbers.forEach(n => {
+      const card = document.createElement('div');
+      card.className = 'num-card';
+      card.innerHTML = `<span class="num-val">${n}</span><span class="num-label">tap to select</span>`;
+      card.onclick = () => selectNumber(card, n);
+      grid.appendChild(card);
+    });
+
+    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('game-log').style.display = 'none';
+    document.getElementById('game-log').innerHTML = '';
+  }
+
+  function selectNumber(card, n) {
+    document.querySelectorAll('.num-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    state.selectedNum = n;
+    document.getElementById('submit-btn').disabled = false;
+  }
+
+  /* ── SUBMIT CHOICE ── */
+  async function submitChoice() {
+    if (state.selectedNum === null) return;
+    document.getElementById('submit-btn').disabled = true;
+
+    const logEl = 'game-log';
+    logLine(logEl, 'log-info', `Signing choice (${state.selectedNum}) with ${state.sigAlgo}...`);
+    await delay(400);
+    logLine(logEl, 'log-ok', `  ✓ Signature generated`);
+    await delay(300);
+    logLine(logEl, 'log-info', `Encrypting with session key → sending to house...`);
+    await delay(500);
+    logLine(logEl, 'log-ok', `  ✓ House received & verified your choice`);
+    await delay(400);
+    logLine(logEl, 'log-info', `Waiting for opponent's choice...`);
+    await delay(900);
+
+    /* simulate opponent */
+    const oppNums = Array.from({length:3}, () => Math.floor(Math.random()*15)+1);
+    const oppPick = oppNums[Math.floor(Math.random()*3)];
+    logLine(logEl, 'log-ok', `  ✓ Both choices received. Comparing...`);
+    await delay(400);
+
+    const result = state.selectedNum > oppPick ? 'win' : state.selectedNum < oppPick ? 'lose' : 'tie';
+    if (result === 'win') state.scores[0]++;
+    else if (result === 'lose') state.scores[1]++;
+
+    state.roundHistory.push({ round: state.currentRound, mine: state.selectedNum, opp: oppPick, result });
+    logLine(logEl, result === 'win' ? 'log-ok' : result === 'lose' ? 'log-key' : 'log-info',
+      `  Round ${state.currentRound}: You(${state.selectedNum}) vs Opp(${oppPick}) → ${result.toUpperCase()}`);
+
+    await delay(900);
+
+    if (state.currentRound < 3) {
+      state.currentRound++;
+      loadRound();
+    } else {
+      showResults();
+    }
+  }
+
+  /* ── RESULTS ── */
+  function showResults() {
+    const playerWon = state.scores[0] >= 2;
+    const banner = document.getElementById('winner-banner');
+    const winnerName = document.getElementById('winner-name');
+    const winnerSub  = document.getElementById('winner-sub');
+
+    if (state.scores[0] === state.scores[1]) {
+      winnerName.textContent = 'Draw';
+      winnerSub.textContent  = 'Both players won 1 round each.';
+      banner.style.borderColor = 'var(--muted)';
+    } else if (playerWon) {
+      winnerName.textContent = state.playerName + ' Wins!';
+      winnerSub.textContent  = `Won ${state.scores[0]} of 3 rounds`;
+    } else {
+      winnerName.textContent = 'Opponent Wins';
+      winnerSub.textContent  = `Opponent won ${state.scores[1]} of 3 rounds`;
+      banner.style.borderColor = 'var(--red)';
+      banner.style.background  = 'rgba(192,57,43,0.05)';
+    }
+
+    const tbody = document.getElementById('results-body');
+    tbody.innerHTML = '';
+    state.roundHistory.forEach(r => {
+      const cls = r.result === 'win' ? 'win' : r.result === 'lose' ? 'lose' : 'tie';
+      tbody.innerHTML += `
+        <tr>
+          <td>Round ${r.round}</td>
+          <td>${r.mine}</td>
+          <td>${r.opp}</td>
+          <td class="${cls}">${r.result.toUpperCase()}</td>
+        </tr>`;
+    });
+
+    document.getElementById('teardown-key').textContent = shortKey(state.sessionKey);
+    state.sessionKey = '';
+
+    showScreen('screen-results');
+  }
+
+  /* ── RESET ── */
+  function resetGame() {
+    state = { playerName:'', sigAlgo:'RSA', sessionKey:'', publicKey:'', currentRound:0, scores:[0,0], roundNumbers:[], roundHistory:[], selectedNum:null };
+    document.getElementById('player-name').value = '';
+    document.getElementById('setup-log').innerHTML = '';
+    document.getElementById('setup-log').style.display = 'none';
+    selectSig('RSA');
+    showScreen('screen-setup');
+  }
+
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>
