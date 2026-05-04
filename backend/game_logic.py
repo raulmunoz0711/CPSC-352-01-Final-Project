@@ -4,7 +4,7 @@ import random
 P1 = "Player 1"
 P2 = "Player 2"
 
-class House:
+class Game_Logic:
     def __init__(self):
         #Tracking player scored
         self.scores = {"P1": 0, 
