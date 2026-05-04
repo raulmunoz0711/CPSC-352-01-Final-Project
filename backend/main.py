@@ -1,4 +1,4 @@
-from game_logic import House
+from game_logic import Game_Logic
 
-game = House()
+game = Game_Logic()
 game.play_game()
