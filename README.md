@@ -8,6 +8,7 @@ This is the GitHub, allowing all team members to collaborate on the CPSC 352-01 
 - Kush Bajaria | CWID: 5460 | Email: bajariakush@csu.fullerton.edu
 - Christopher Contreras | CWID: 0168 | Email: cdc17507@csu.fullerton.edu
 - Jg Guerrero | CWID: 2197 | Email: jonathanguerrero@csu.fullerton.edu
+- Harsh Chuncha | CWID: 6607 | Email: harshkc03@csu.fullerton.edu
 
 # Member Roles
 ## Backend:
