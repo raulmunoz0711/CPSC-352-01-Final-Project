@@ -18,7 +18,7 @@ This is the GitHub, allowing all team members to collaborate on the CPSC 352-01 
 - Raul Munoz: Files: routes/game.py, game_logic.py | Owns the game state machine
 
 ## Frontend:
-- Christopher Contreras: Files: crypto.js | Coordinates with Jacob Rodas and Kush Bajaria
+- : Files: crypto.js | Coordinates with Jacob Rodas and Kush Bajaria
 - Harsh Cuncha: Files: api.js | Coordinates with Kush Bajaria
-- **CDC**: Files: Lobby.jsx, App.jsx | Own entry flow
+- Christopher Contreras: Files: Lobby.jsx, App.jsx | Own entry flow
 - Jg Guerrero: Files: GameBoard.jsx, Result.jsx | Owns gameplay UI
