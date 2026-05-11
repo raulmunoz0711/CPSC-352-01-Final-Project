@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const styles = {
   wrapper: {
@@ -158,42 +158,65 @@ function RoundPip({ number, state }) {
     fontSize: "0.62rem",
     flexShrink: 0,
     borderColor: state === "done" || state === "active" ? "#c9a84c" : "#2a2a2a",
-    color:       state === "done" || state === "active" ? "#e8c96a"  : "#888880",
+    color:       state === "done" || state === "active" ? "#e8c96a" : "#888880",
     background:  state === "done" ? "rgba(201,168,76,0.15)" : "transparent",
   };
   return <div style={pip}>{number}</div>;
 }
 
+// ─── mock helpers ──────────────────────────────────────────────────────────
+// TODO (Person F): replace these with real calls from api.js
+async function getNumbers() {
+  await delay(300);
+  return Array.from({ length: 3 }, () => Math.floor(Math.random() * 15) + 1);
+}
+
+async function submitChoice(chosenNumber) {
+  await delay(600);
+  const oppPick = Math.floor(Math.random() * 15) + 1;
+  const result  = chosenNumber > oppPick ? "win" : chosenNumber < oppPick ? "lose" : "tie";
+  return { oppPick, result };
+}
+// ──────────────────────────────────────────────────────────────────────────
+
 /**
  * GameBoard
  *
- * Props (from App.jsx / api.js once backend is wired):
- *   currentRound  {number}   1 | 2 | 3
- *   numbers       {number[]} three numbers from house  e.g. [4, 11, 7]
- *   playerScore   {number}   wins so far
- *   opponentScore {number}   opponent wins so far
- *   onSubmit      {function} called with chosen number  e.g. onSubmit(7)
- *   lastResult    {string|null} "win" | "lose" | "tie" | null
- *   isWaiting     {boolean}  true while waiting for opponent's move
+ * Props:
+ *   onGameOver {function} called after round 3 with:
+ *     { playerScore, opponentScore, roundHistory, sessionKey }
  */
-export default function GameBoard({
-  currentRound   = 1,
-  numbers        = [3, 9, 14],
-  playerScore    = 0,
-  opponentScore  = 0,
-  onSubmit       = () => {},
-  lastResult     = null,
-  isWaiting      = false,
-}) {
-  const [selected, setSelected] = useState(null);
-  const [log, setLog]           = useState([]);
+export default function GameBoard({ onGameOver = () => {} }) {
+  const [currentRound,  setCurrentRound]  = useState(1);
+  const [numbers,       setNumbers]       = useState([]);
+  const [selected,      setSelected]      = useState(null);
+  const [playerScore,   setPlayerScore]   = useState(0);
+  const [opponentScore, setOpponentScore] = useState(0);
+  const [lastResult,    setLastResult]    = useState(null);
+  const [roundHistory,  setRoundHistory]  = useState([]);
+  const [isWaiting,     setIsWaiting]     = useState(false);
+  const [isLoadingNums, setIsLoadingNums] = useState(true);
+  const [log,           setLog]           = useState([]);
+
+  // Fetch numbers from house whenever round changes
+  useEffect(() => {
+    setIsLoadingNums(true);
+    setSelected(null);
+    setLog([]);
+    getNumbers().then((nums) => {
+      setNumbers(nums);
+      setIsLoadingNums(false);
+    });
+  }, [currentRound]);
 
   function addLog(type, msg) {
     setLog(prev => [...prev, { type, msg }]);
   }
 
   async function handleSubmit() {
-    if (selected === null || isWaiting) return;
+    if (selected === null || isWaiting || isLoadingNums) return;
+    setIsWaiting(true);
+
     addLog("info", `Signing choice (${selected}) with RSA-PSS…`);
     await delay(400);
     addLog("ok", "  ✓ Signature generated");
@@ -201,21 +224,51 @@ export default function GameBoard({
     addLog("info", "Encrypting with AES-GCM session key → sending…");
     await delay(400);
     addLog("ok", "  ✓ House received & verified your choice");
-    onSubmit(selected);
-    setSelected(null);
+    addLog("info", "Waiting for opponent…");
+
+    const { oppPick, result } = await submitChoice(selected);
+
+    addLog(
+      result === "win" ? "ok" : "info",
+      `  You(${selected}) vs Opp(${oppPick}) → ${result.toUpperCase()}`
+    );
+
+    const newPlayerScore   = playerScore   + (result === "win"  ? 1 : 0);
+    const newOpponentScore = opponentScore + (result === "lose" ? 1 : 0);
+    const newHistory = [
+      ...roundHistory,
+      { round: currentRound, mine: selected, opp: oppPick, result },
+    ];
+
+    setPlayerScore(newPlayerScore);
+    setOpponentScore(newOpponentScore);
+    setRoundHistory(newHistory);
+    setLastResult(result);
+    setIsWaiting(false);
+
+    await delay(800);
+
+    if (currentRound < 3) {
+      setCurrentRound(r => r + 1);
+    } else {
+      // All 3 rounds done — call App's onGameOver
+      onGameOver({
+        playerScore:   newPlayerScore,
+        opponentScore: newOpponentScore,
+        roundHistory:  newHistory,
+        sessionKey:    "a3f9c1d2...4e8b", // TODO: pass real session key from api.js
+      });
+    }
   }
 
-  const resultBadge = lastResult === "win"
-    ? <span style={{ ...styles.badge, ...styles.badgeWin  }}>You Won</span>
-    : lastResult === "lose"
-    ? <span style={{ ...styles.badge, ...styles.badgeLose }}>You Lost</span>
-    : lastResult === "tie"
-    ? <span style={{ ...styles.badge, ...styles.badgeTie  }}>Tie</span>
-    : null;
+  const resultBadge =
+    lastResult === "win"  ? <span style={{ ...styles.badge, ...styles.badgeWin  }}>You Won</span>  :
+    lastResult === "lose" ? <span style={{ ...styles.badge, ...styles.badgeLose }}>You Lost</span> :
+    lastResult === "tie"  ? <span style={{ ...styles.badge, ...styles.badgeTie  }}>Tie</span>      :
+    null;
 
   return (
     <div style={styles.wrapper}>
-      {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 
       <div style={styles.container}>
@@ -231,14 +284,13 @@ export default function GameBoard({
           <div style={styles.panelTitle}>Round Progress</div>
           <div style={styles.roundTrack}>
             {[1, 2, 3].map((n, i) => (
-              <>
+              <div key={n} style={{ display: "contents" }}>
                 <RoundPip
-                  key={n}
                   number={n}
                   state={n < currentRound ? "done" : n === currentRound ? "active" : "idle"}
                 />
-                {i < 2 && <div key={`line-${n}`} style={styles.roundLine} />}
-              </>
+                {i < 2 && <div style={styles.roundLine} />}
+              </div>
             ))}
           </div>
 
@@ -270,28 +322,36 @@ export default function GameBoard({
           </p>
 
           <div style={styles.numberGrid}>
-            {numbers.map((n) => (
-              <div
-                key={n}
-                style={{
-                  ...styles.numCardBase,
-                  ...(selected === n ? styles.numCardSelected : {}),
-                }}
-                onClick={() => !isWaiting && setSelected(n)}
-              >
-                <span style={styles.numVal}>{n}</span>
-                <span style={styles.numLabel}>{selected === n ? "selected" : "tap to pick"}</span>
-              </div>
-            ))}
+            {isLoadingNums
+              ? [1, 2, 3].map(i => (
+                  <div key={i} style={{ ...styles.numCardBase, opacity: 0.4 }}>
+                    <span style={styles.numVal}>—</span>
+                    <span style={styles.numLabel}>loading…</span>
+                  </div>
+                ))
+              : numbers.map((n) => (
+                  <div
+                    key={n}
+                    style={{
+                      ...styles.numCardBase,
+                      ...(selected === n ? styles.numCardSelected : {}),
+                    }}
+                    onClick={() => !isWaiting && setSelected(n)}
+                  >
+                    <span style={styles.numVal}>{n}</span>
+                    <span style={styles.numLabel}>{selected === n ? "selected" : "tap to pick"}</span>
+                  </div>
+                ))
+            }
           </div>
 
           <button
             style={{
               ...styles.btn,
-              ...(selected === null || isWaiting ? styles.btnDisabled : {}),
+              ...(selected === null || isWaiting || isLoadingNums ? styles.btnDisabled : {}),
             }}
             onClick={handleSubmit}
-            disabled={selected === null || isWaiting}
+            disabled={selected === null || isWaiting || isLoadingNums}
           >
             {isWaiting ? "⏳  Waiting for opponent…" : "Submit Choice"}
           </button>

@@ -32,6 +32,7 @@ const styles = {
     borderRadius: "4px",
     padding: "1.75rem",
     marginBottom: "1rem",
+    border: "none", 
   },
   panelTitle: {
     fontFamily: "'IBM Plex Mono', monospace",
