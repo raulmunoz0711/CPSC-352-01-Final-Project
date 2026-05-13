@@ -114,7 +114,7 @@ Python dependencies. At minimum: `fastapi`, `uvicorn`, `cryptography`, `pydantic
 - **`Result.jsx`** — Winner announcement. Verifies the house's signature on the result before displaying.
 
 ### `src/crypto.js`
-All client-side cryptography in one file using the WebCrypto API. Exports functions for: generating an AES-GCM key, encrypting/decrypting payloads, RSA-OAEP wrapping the session key, RSA-PSS signing, DSA signing (note: WebCrypto's DSA support is limited — see Important Notes below), and signature verification.
+All client-side cryptography in one file. Uses the WebCrypto API for AES-GCM and RSA (OAEP + PSS), and `jsrsasign` for DSA. Exports functions for: generating an AES-GCM session key, encrypting/decrypting payloads, RSA-OAEP wrapping the session key, RSA-PSS signing, DSA signing, and signature verification.
 
 ### `src/api.js`
 The fetch wrapper. Every outbound request is wrapped in the signed/encrypted envelope before being sent, and every inbound response is verified and decrypted before being returned to the components.
@@ -141,5 +141,4 @@ The `.gitignore` rule `keys/*.priv` protects these. Verify with `git status` aft
 ## Important Notes
 
 ### WebCrypto and DSA
-The browser WebCrypto API does not natively support DSA signing.
-1. Generate the DSA signature on the backend using the player's private key (read from `keys/playerN_dsa.priv` at startup, or have the player upload their private key once at session start). The frontend just sends plaintext-to-be-signed to a `/sign` endpoint.
+The browser WebCrypto API does not natively support DSA signing. We use the `jsrsasign` library on the frontend to handle DSA sign and verify. The player's DSA private key is loaded into the browser via a file picker in `Lobby.jsx` (using `FileReader.readAsText()`) and held in component memory only — never persisted to localStorage and never sent to the backend.
