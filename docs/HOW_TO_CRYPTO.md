@@ -110,14 +110,14 @@ This doc contains info on how to use my crypto modules (`rsa_utils.py`, `dsa_uti
 
 - Every outgoing request gets wrapped in a signed + encrypted envelope.
 - Every incoming response gets verified + decrypted before reaching components.
-- Envelope shape must match `aes_utils.send_message` exactly.
+- Polls /round-result and /winner until they return 200 instead of 202.
 
 **How to incorporate it into your file:**
 
 - File: `frontend/src/api.js`
 - Functions you call (from Person E's `crypto.js`): `signRSA`/`signDSA`, `aesEncrypt`, `aesDecrypt`, `verifyRSA`/`verifyDSA`
 - Envelope JSON shape (must match backend):
-  ```json
+```json
   {
     "ciphertext": "<base64>",
     "iv": "<base64, 12 bytes>",
@@ -126,11 +126,19 @@ This doc contains info on how to use my crypto modules (`rsa_utils.py`, `dsa_uti
     "signature_algo": "RSA" | "DSA",
     "sender": "player1"
   }
-  ```
+```
 - Bytes that get signed: `iv || ciphertext || seq_as_4_byte_big_endian` (exact same as backend).
 - Maintain `nextSendSeq` and `nextRecvSeq` in client state — must mirror what Person D tracks server-side.
+- **Endpoints (all POST):**
+  - `/game/start` → request: `{session_id}`. No envelope either direction.
+  - `/game/deal` → request: `{session_id, player_id}`. Response carries envelope; plaintext is JSON array of 3 numbers.
+  - `/game/submit` → request: `{session_id, player_id, envelope}`. Envelope plaintext is the chosen number as a UTF-8 string (e.g. `"7"`).
+  - `/game/round-result` → request: `{session_id, player_id, round}`. Returns **202** if round not yet resolved — poll with ~500ms interval. Response envelope plaintext is JSON `{round, opponent_choice, winner}`.
+  - `/game/winner` → request: `{session_id, player_id}`. Returns 202 until game ends. Plaintext is JSON `{winner, scores}`.
+  - `/game/leave` → request: `{session_id, player_id}`. No envelope.
+- **Seq counters on failure:** if the server returns 401 (signature/decryption failure), do NOT advance your seq counters. Retry at the same seq. The backend doesn't advance on failure either, so this keeps both sides in sync.
 
-**Goal:** Confidentiality + Integrity on the wire. You're the transport layer that carries my envelopes across the network without breaking them.
+**Goal:** Confidentiality + Integrity on the wire. You're the transport layer that carries envelopes across the network without breaking them.
 
 ---
 
