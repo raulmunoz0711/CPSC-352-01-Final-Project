@@ -1,6 +1,6 @@
 # Crypto Handoff — Per-Person Guide
 
-This doc contains info on how to use my crypto modules (`rsa_utils.py`, `dsa_utils.py`) and Kush's (`aes_utils.py`) in `\backend\crypto\` to plug into their files. Read your own section.
+This doc contains info on how to use my crypto modules (`rsa_utils.py`, `dsa_utils.py`) and Kush's (`aes_utils.py`) in `\backend\crypto\` to plug into your files. Read your own section.
 
 ---
 
