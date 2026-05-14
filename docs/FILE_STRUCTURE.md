@@ -117,7 +117,7 @@ Python dependencies. At minimum: `fastapi`, `uvicorn`, `cryptography`, `pydantic
 All client-side cryptography in one file. Uses the WebCrypto API for AES-GCM and RSA (OAEP + PSS), and `jsrsasign` for DSA. Exports functions for: generating an AES-GCM session key, encrypting/decrypting payloads, RSA-OAEP wrapping the session key, RSA-PSS signing, DSA signing, and signature verification.
 
 ### `src/api.js`
-The fetch wrapper. Every outbound request is wrapped in the signed/encrypted envelope before being sent, and every inbound response is verified and decrypted before being returned to the components.
+The fetch wrapper. Every outbound request is wrapped in the signed/encrypted envelope before being sent, and every inbound response is verified and decrypted before being returned to the components. Also polls `/game/round-result` and `/game/winner` (which return HTTP 202 until ready) on a short interval until they return 200.
 
 ### `src/App.jsx` and `src/main.jsx`
 Standard React entry point and root component. Renders the lobby, then the game board, then the result based on game state.
