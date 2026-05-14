@@ -14,7 +14,7 @@ def _bytes_to_sign(iv: bytes, ciphertext: bytes, seq: int) -> bytes:
 
 
 def encrypt(plaintext: bytes, session_key: bytes) -> tuple[bytes, bytes]:
-    assert len(session_key) in VALID_KEY_LENS,
+    assert len(session_key) in VALID_KEY_LENS
     iv = os.urandom(IV_LEN)
     aesgcm = AESGCM(session_key)
     ciphertext = aesgcm.encrypt(iv, plaintext, None)
@@ -22,7 +22,7 @@ def encrypt(plaintext: bytes, session_key: bytes) -> tuple[bytes, bytes]:
 
 
 def decrypt(ciphertext: bytes, iv: bytes, session_key: bytes) -> bytes:
-    assert len(session_key) in VALID_KEY_LENS,
+    assert len(session_key) in VALID_KEY_LENS
     aesgcm = AESGCM(session_key)
     return aesgcm.decrypt(iv, ciphertext, None)
 
