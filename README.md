@@ -15,11 +15,13 @@ This is the GitHub, allowing all team members to collaborate on the CPSC 352-01 
 ## Backend:
 - Jacob Rodas: Files: crypto/rsa_utils.py, crypto/dsa_utils.py | Coordinates with Christopher Contreras on sign/verify formats
 - Kush Bajaria: Files: crypto/aes_utils.py, envolope format | Coordinates with Harsh Chuncha on the wire format
-- Eduardo Tostado: Files: routes/auth.py, keygen.py | owns the session handshake
+- Eduardo Tostado: Files: routes/auth.py, keygen.py | Owns the session handshake
 - Raul Munoz: Files: routes/game.py, game_logic.py | Owns the game state machine
 
 ## Frontend:
-- : Files: crypto.js | Coordinates with Jacob Rodas and Kush Bajaria
+- Chris Jose: Files: crypto.js | Coordinates with Jacob Rodas and Kush Bajaria
 - Harsh Chuncha: Files: api.js | Coordinates with Kush Bajaria
 - Christopher Contreras: Files: Lobby.jsx, App.jsx | Own entry flow
 - Jg Guerrero: Files: GameBoard.jsx, Result.jsx | Owns gameplay UI
+
+# How to Run
