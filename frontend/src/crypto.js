@@ -28,6 +28,53 @@ function bytesToHex(bytes) {
   return out;
 }
 
+function pemToBytes(pem) {
+  let clean = pem
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/\s/g, "");
+  return fromB64(clean);
+}
+
+async function importRsaPublicKey(pem) {
+  if (pem && pem.type === "public") {
+    return pem;
+  }
+  return subtle.importKey(
+    "spki",
+    pemToBytes(pem),
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["encrypt"]
+  );
+}
+
+async function importRsaPrivateKey(pem) {
+  if (pem && pem.type === "private") {
+    return pem;
+  }
+  return subtle.importKey(
+    "pkcs8",
+    pemToBytes(pem),
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+}
+
+async function importRsaVerifyKey(pem) {
+  if (pem && pem.type === "public") {
+    return pem;
+  }
+  return subtle.importKey(
+    "spki",
+    pemToBytes(pem),
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+}
+
 export function createSessionKey() {
   return crypto.getRandomValues(new Uint8Array(32));
 }
@@ -151,62 +198,64 @@ export async function aesDecrypt(key, iv, ciphertext) {
 }
 
 export async function wrapSessionKey(housePublicKey, sessionKeyBytes) {
+  let pubKey = await importRsaPublicKey(housePublicKey);
   let wrapped = await subtle.encrypt(
     { name: "RSA-OAEP" },
-    housePublicKey,
+    pubKey,
     sessionKeyBytes
   );
   return b64(wrapped);
 }
 
 export async function signRSA(privateKey, data) {
+  let privKey = await importRsaPrivateKey(privateKey);
   let signature = await subtle.sign(
     { name: "RSA-PSS", saltLength: 222 },
-    privateKey,
+    privKey,
     getBytes(data)
   );
   return b64(signature);
 }
 
 export async function verifyRSA(publicKey, data, signature) {
+  let pubKey = await importRsaVerifyKey(publicKey);
   return subtle.verify(
     { name: "RSA-PSS", saltLength: 222 },
-    publicKey,
+    pubKey,
     isBytes(signature) ? signature : fromB64(signature),
     getBytes(data)
   );
 }
 
 export async function signDSA(privatePem, data) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-
   let privateKey = KEYUTIL.getKey(privatePem);
   let sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
   sig.init(privateKey);
-  sig.updateString(msg);
+
+  if (typeof data === "string") {
+    sig.updateString(data);
+  } else {
+    sig.updateHex(bytesToHex(getBytes(data)));
+  }
 
   let sigHex = sig.sign();
   return hextob64(sigHex);
 }
 
 export async function verifyDSA(publicPem, data, signature) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-
   let publicKey = KEYUTIL.getKey(publicPem);
   let sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
   sig.init(publicKey);
-  sig.updateString(msg);
 
-  let sigHex = bytesToHex(fromB64(signature));
+  if (typeof data === "string") {
+    sig.updateString(data);
+  } else {
+    sig.updateHex(bytesToHex(getBytes(data)));
+  }
+
+  let sigHex = isBytes(signature)
+    ? bytesToHex(signature)
+    : bytesToHex(fromB64(signature));
+
   return sig.verify(sigHex);
 }
