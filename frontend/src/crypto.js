@@ -1,3 +1,5 @@
+import { KEYUTIL, KJUR, hextob64 } from "jsrsasign";
+
 const subtle = window.crypto.subtle;
 
 function b64(buffer) {
@@ -16,6 +18,14 @@ function fromB64(str) {
     bytes[i] = raw.charCodeAt(i);
   }
   return bytes;
+}
+
+function bytesToHex(bytes) {
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += bytes[i].toString(16).padStart(2, "0");
+  }
+  return out;
 }
 
 export function createSessionKey() {
@@ -151,7 +161,7 @@ export async function wrapSessionKey(housePublicKey, sessionKeyBytes) {
 
 export async function signRSA(privateKey, data) {
   let signature = await subtle.sign(
-    { name: "RSA-PSS", saltLength: 32 },
+    { name: "RSA-PSS", saltLength: 222 },
     privateKey,
     getBytes(data)
   );
@@ -160,27 +170,43 @@ export async function signRSA(privateKey, data) {
 
 export async function verifyRSA(publicKey, data, signature) {
   return subtle.verify(
-    { name: "RSA-PSS", saltLength: 32 },
+    { name: "RSA-PSS", saltLength: 222 },
     publicKey,
     isBytes(signature) ? signature : fromB64(signature),
     getBytes(data)
   );
 }
 
-export async function signDSA(privateKey, data) {
-  let signature = await subtle.sign(
-    { name: "ECDSA", hash: "SHA-256" },
-    privateKey,
-    getBytes(data)
-  );
-  return b64(signature);
+export async function signDSA(privatePem, data) {
+  let msg = "";
+  if (typeof data === "string") {
+    msg = data;
+  } else {
+    msg = JSON.stringify(data);
+  }
+
+  let privateKey = KEYUTIL.getKey(privatePem);
+  let sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
+  sig.init(privateKey);
+  sig.updateString(msg);
+
+  let sigHex = sig.sign();
+  return hextob64(sigHex);
 }
 
-export async function verifyDSA(publicKey, data, signature) {
-  return subtle.verify(
-    { name: "ECDSA", hash: "SHA-256" },
-    publicKey,
-    isBytes(signature) ? signature : fromB64(signature),
-    getBytes(data)
-  );
+export async function verifyDSA(publicPem, data, signature) {
+  let msg = "";
+  if (typeof data === "string") {
+    msg = data;
+  } else {
+    msg = JSON.stringify(data);
+  }
+
+  let publicKey = KEYUTIL.getKey(publicPem);
+  let sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
+  sig.init(publicKey);
+  sig.updateString(msg);
+
+  let sigHex = bytesToHex(fromB64(signature));
+  return sig.verify(sigHex);
 }
