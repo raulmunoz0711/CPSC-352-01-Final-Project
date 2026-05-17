@@ -106,11 +106,14 @@ export async function aesEncrypt(key, data) {
   return encrypt(key, data);
 }
 
-export async function aesDecrypt(key, envelope) {
-  return decrypt(key, envelope);
+export async function aesDecrypt(key, iv, ciphertext) {
+  return decrypt(key, {
+    iv: iv,
+    ciphertext: ciphertext,
+  });
 }
 
-export async function wrapSessionKey(sessionKeyBytes) {
+export async function wrapSessionKey(housePublicKey, sessionKeyBytes) {
   return b64(sessionKeyBytes);
 }
 
