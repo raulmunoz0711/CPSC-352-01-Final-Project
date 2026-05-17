@@ -170,18 +170,16 @@ export default function Lobby({ onJoin = () => {} }) {
   }
 
   async function handleJoin() {
-  if (!canSubmit) return;
-  setLoading(true);
-  setError("");
-  try {
-    await onJoin({ player, scheme, privateKeyPem });
-  } catch (err) {
-    console.error("Lobby handshake error:", err);   
-    console.error("Stack:", err.stack);              
-    setError(err.message || "Handshake failed. Please try again.");
-    setLoading(false);
+    if (!canSubmit) return;
+    setLoading(true);
+    setError("");
+    try {
+      await onJoin({ player, scheme, privateKeyPem });
+    } catch (err) {
+      setError(err.message || "Handshake failed. Please try again.");
+      setLoading(false);
+    }
   }
-}
 
   return (
     <div style={styles.wrapper}>

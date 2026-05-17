@@ -434,15 +434,23 @@ export async function getResult() {
 }
 
 export async function leaveSession() {
-  const session = requireSession();
-  const result = await requestJson("/game/leave", {
-    session_id: session.sessionId,
-    player_id: session.playerId,
-  });
-
+  // Clear local state first so it always happens, even if the backend
+  // already destroyed this session (404) or the request fails for any reason.
+  const session = currentSession;
   currentSession = null;
   gameStarted = false;
-  return result;
+
+  if (!session?.sessionId) return { status: "no active session" };
+
+  try {
+    return await requestJson("/game/leave", {
+      session_id: session.sessionId,
+      player_id: session.playerId,
+    });
+  } catch (err) {
+    // Session was already gone or unreachable — local state is already cleared.
+    return { status: "session already destroyed" };
+  }
 }
 
 function delay(ms) {

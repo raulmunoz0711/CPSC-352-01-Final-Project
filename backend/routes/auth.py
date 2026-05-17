@@ -1,10 +1,11 @@
 from pathlib import Path
 import base64
+import uuid
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from game_logic import create_game, get_game
+from game_logic import create_game, get_game, games
 from crypto import rsa_utils, dsa_utils
 
 router = APIRouter()
@@ -23,6 +24,27 @@ def get_house_pubkey(algo: str):
         raise HTTPException(status_code=400, detail="algo must be 'rsa' or 'dsa'")
     pem_bytes = (KEYS_DIR / "house" / f"house_{algo}.pub").read_bytes()
     return {"pem": pem_bytes.decode("utf-8")}
+
+
+@router.get("/auth/status/{session_id}")
+def session_status(session_id: str):
+    """Returns whether both players have registered in this session."""
+    try:
+        game = get_game(session_id)
+    except KeyError:
+        return {"both_ready": False}
+    return {"both_ready": game.both_players_registered()}
+
+
+def _find_open_session():
+    """
+    Return the session ID of a game still waiting for a second player,
+    or None if no such session exists.
+    """
+    for session_id, game in games.items():
+        if not game.both_players_registered() and not game.ended:
+            return session_id
+    return None
 
 
 class AuthRequest(BaseModel):
@@ -71,11 +93,17 @@ def auth(req: AuthRequest):
     if not valid:
         raise HTTPException(status_code=401, detail="Signature verification failed")
 
-    SESSION_ID = "game-1"
-    try:
-        game = get_game(SESSION_ID)
-    except KeyError:
-        game = create_game(SESSION_ID)
+    # Find an open session waiting for a second player; otherwise start a new one.
+    session_id = _find_open_session()
+    if session_id is None:
+        session_id = f"game-{uuid.uuid4().hex[:8]}"
+        game = create_game(session_id)
+    else:
+        game = get_game(session_id)
+        # If our slot is already taken in the open session, start a fresh one.
+        if game.session_keys[player_id] is not None:
+            session_id = f"game-{uuid.uuid4().hex[:8]}"
+            game = create_game(session_id)
 
     game.register_player(
         player_id=player_id,
@@ -87,14 +115,5 @@ def auth(req: AuthRequest):
     return {
         "status": "registered",
         "player_id": player_id,
-        "session_id": SESSION_ID,
+        "session_id": session_id,
     }
-
-@router.get("/auth/status/{session_id}")
-def session_status(session_id: str):
-    """Returns whether both players have registered."""
-    try:
-        game = get_game(session_id)
-    except KeyError:
-        return {"both_ready": False}
-    return {"both_ready": game.both_players_registered()}

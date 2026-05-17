@@ -37,12 +37,12 @@ function utf8(s) {
 
 function pemToBytes(pem) {
   const body = pem
-    .replace(/-----BEGIN [^-]+-----/g, "")
-    .replace(/-----END [^-]+-----/g, "")
-    .replace(/[^A-Za-z0-9+/=]/g, "");
-  console.log("pemToBytes: body length =", body.length, "first 40 chars:", body.slice(0, 40));
+    .replace(/-----BEGIN [^-]+-----/, "")
+    .replace(/-----END [^-]+-----/, "")
+    .replace(/\s+/g, "");
   return b64ToBytes(body);
 }
+
 // ---------- session key ----------
 
 export function generateSessionKey() {
@@ -80,11 +80,8 @@ async function importRsaOaepPublicKey(pem) {
 }
 
 export async function wrapSessionKey(housePubPem, sessionKeyBytes) {
-  console.log("wrapSessionKey: starting, pem length =", housePubPem.length);
   const pubKey = await importRsaOaepPublicKey(housePubPem);
-  console.log("wrapSessionKey: imported house pubkey OK");
   const wrapped = await subtle.encrypt({ name: "RSA-OAEP" }, pubKey, sessionKeyBytes);
-  console.log("wrapSessionKey: encrypt OK, wrapped bytes =", wrapped.byteLength);
   return bytesToB64(new Uint8Array(wrapped));
 }
 
@@ -111,11 +108,8 @@ async function importRsaPssPublicKey(pem) {
 }
 
 export async function signRSA(privatePem, messageBytes) {
-  console.log("signRSA: starting, pem length =", privatePem.length);
   const key = await importRsaPssPrivateKey(privatePem);
-  console.log("signRSA: imported private key OK");
   const sig = await subtle.sign({ name: "RSA-PSS", saltLength: 222 }, key, messageBytes);
-  console.log("signRSA: signed OK, sig bytes =", sig.byteLength);
   return new Uint8Array(sig);
 }
 
