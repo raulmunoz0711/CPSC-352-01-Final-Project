@@ -6,6 +6,17 @@ const MAX_POLL_ATTEMPTS = 120;
 let currentSession = null;
 let gameStarted = false;
 
+const FINAL_CRYPTO_HELPERS = [
+  "generateSessionKey",
+  "wrapSessionKey",
+  "signRSA",
+  "signDSA",
+  "verifyRSA",
+  "verifyDSA",
+  "aesEncrypt",
+  "aesDecrypt",
+];
+
 async function requestJson(path, body, options = {}) {
   const { allowAccepted = false } = options;
   let response;
@@ -95,7 +106,18 @@ function getOpponentChoice(payload, playerId) {
 }
 
 function cryptoNotReadyError() {
-  return new Error("Encrypted game response received, but frontend crypto helpers are not ready yet.");
+  return new Error(
+    "Encrypted game envelope received, but final frontend crypto is not wired yet. " +
+    `api.js needs real HOW_TO_CRYPTO.md helpers (${FINAL_CRYPTO_HELPERS.join(", ")}) ` +
+    "and must not accept demo signatures or skip verification."
+  );
+}
+
+function cryptoSubmitNotReadyError() {
+  return new Error(
+    "Encrypted choice submission is required by the final backend contract, but final frontend crypto is not wired yet. " +
+    "Waiting for real session-key auth, RSA/DSA signing, and signature verification helpers."
+  );
 }
 
 function formatBackendError(data, status) {
@@ -107,6 +129,12 @@ function formatBackendError(data, status) {
 
 function hasEnvelope(data) {
   return Boolean(data && typeof data === "object" && data.envelope);
+}
+
+function normalizeSignatureAlgo(scheme) {
+  if (scheme === "RSA" || scheme === "RSA-PSS") return "RSA";
+  if (scheme === "DSA") return "DSA";
+  throw new Error("Unsupported signature scheme. Expected RSA-PSS, RSA, or DSA.");
 }
 
 function normalizeRoundResult(payload, playerId) {
@@ -150,6 +178,8 @@ export async function joinSession({ player, scheme }) {
     throw new Error("Player and signature scheme are required.");
   }
 
+  const signatureAlgo = normalizeSignatureAlgo(scheme);
+
   let response;
   try {
     response = await fetch(`${API_BASE}/auth`, {
@@ -179,7 +209,13 @@ export async function joinSession({ player, scheme }) {
     throw new Error("Handshake failed: missing session ID.");
   }
 
-  currentSession = { sessionId, player, scheme };
+  currentSession = {
+    sessionId,
+    player,
+    playerId: toBackendPlayerId(player),
+    scheme,
+    signatureAlgo,
+  };
   gameStarted = false;
 
   return { sessionId };
@@ -235,7 +271,7 @@ export async function submitChoice(currentRound, chosenNumber) {
     submitData = await requestJson("/game/submit", plainSubmitBody);
   } catch (err) {
     if (err.status === 422 && err.message.includes("envelope")) {
-      throw cryptoNotReadyError();
+      throw cryptoSubmitNotReadyError();
     }
 
     throw err;
