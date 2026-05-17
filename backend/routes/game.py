@@ -17,13 +17,13 @@ from pydantic import BaseModel
 
 from game_logic import get_game, destroy_game
 from crypto import rsa_utils
-from aes_utils import send_message, receive_message
+from crypto.aes_utils import send_message, receive_message
 
 router = APIRouter(prefix="/game")
 
 # House's RSA private key
 HOUSE_KEYS_DIR = Path(__file__).resolve().parents[2] / "keys"
-with open(HOUSE_KEYS_DIR / "house_rsa.priv", "rb") as f:
+with open(HOUSE_KEYS_DIR / "house" / "house_rsa.priv", "rb") as f:
     HOUSE_PRIV = rsa_utils.load_private_key(f.read())
 
 HOUSE_SIG_ALGO = "RSA"
