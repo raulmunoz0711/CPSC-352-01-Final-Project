@@ -28,11 +28,10 @@ const styles = {
   },
   panel: {
     background: "#181818",
-    border: "1px solid #2a2a2a",
     borderRadius: "4px",
     padding: "1.75rem",
     marginBottom: "1rem",
-    border: "none", 
+    border: "none",
   },
   panelTitle: {
     fontFamily: "'IBM Plex Mono', monospace",
@@ -78,6 +77,24 @@ const styles = {
     marginTop: "0.2rem",
     letterSpacing: "0.08em",
   },
+  fileInput: {
+    display: "block",
+    width: "100%",
+    padding: "0.65rem",
+    background: "#111111",
+    border: "1px solid #2a2a2a",
+    borderRadius: "2px",
+    color: "#888880",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: "0.65rem",
+    cursor: "pointer",
+  },
+  fileLoaded: {
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: "0.6rem",
+    color: "#4caf7d",
+    marginTop: "0.4rem",
+  },
   errorBanner: {
     background: "rgba(192,57,43,0.08)",
     border: "1px solid rgba(192,57,43,0.3)",
@@ -119,24 +136,52 @@ const styles = {
 };
 
 export default function Lobby({ onJoin = () => {} }) {
-  const [player, setPlayer]   = useState(null);
-  const [scheme, setScheme]   = useState(null);
+  const [player, setPlayer] = useState(null);
+  const [scheme, setScheme] = useState(null);
+  const [privateKeyPem, setPrivateKeyPem] = useState("");
+  const [keyFileName, setKeyFileName] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError] = useState("");
 
-  const canSubmit = player && scheme && !loading;
+  const canSubmit = player && scheme && privateKeyPem && !loading;
+
+  function handleKeyFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || "");
+      if (!text.includes("BEGIN") || !text.includes("PRIVATE KEY")) {
+        setError("File does not look like a PEM private key.");
+        setPrivateKeyPem("");
+        setKeyFileName("");
+        return;
+      }
+      setPrivateKeyPem(text);
+      setKeyFileName(file.name);
+    };
+    reader.onerror = () => {
+      setError("Failed to read file.");
+      setPrivateKeyPem("");
+      setKeyFileName("");
+    };
+    reader.readAsText(file);
+  }
 
   async function handleJoin() {
-    if (!canSubmit) return;
-    setLoading(true);
-    setError("");
-    try {
-      await onJoin({ player, scheme });
-    } catch (err) {
-      setError(err.message || "Handshake failed. Please try again.");
-      setLoading(false);
-    }
+  if (!canSubmit) return;
+  setLoading(true);
+  setError("");
+  try {
+    await onJoin({ player, scheme, privateKeyPem });
+  } catch (err) {
+    console.error("Lobby handshake error:", err);   
+    console.error("Stack:", err.stack);              
+    setError(err.message || "Handshake failed. Please try again.");
+    setLoading(false);
   }
+}
 
   return (
     <div style={styles.wrapper}>
@@ -146,7 +191,6 @@ export default function Lobby({ onJoin = () => {} }) {
       />
 
       <div style={styles.container}>
-
         <div style={styles.logo}>
           <div style={styles.logoSuit}>♠ ♥ ♦ ♣</div>
           <h1 style={styles.logoH1}>Secure Poker</h1>
@@ -158,7 +202,7 @@ export default function Lobby({ onJoin = () => {} }) {
           <div style={styles.panelTitle}>Select Player</div>
           <div style={styles.optionGrid}>
             {[
-              { id: "player1", icon: "♠", label: "Player 1", sub: "First to connect"  },
+              { id: "player1", icon: "♠", label: "Player 1", sub: "First to connect" },
               { id: "player2", icon: "♣", label: "Player 2", sub: "Second to connect" },
             ].map((p) => (
               <div
@@ -179,8 +223,8 @@ export default function Lobby({ onJoin = () => {} }) {
           <div style={styles.panelTitle}>Signature Scheme</div>
           <div style={styles.optionGrid}>
             {[
-              { id: "RSA-PSS", icon: "🔐", label: "RSA-PSS", sub: "PKCS #1 v2.1" },
-              { id: "DSA",     icon: "🔏", label: "DSA",     sub: "FIPS 186"     },
+              { id: "RSA", icon: "🔐", label: "RSA-PSS", sub: "PKCS #1 v2.1" },
+              { id: "DSA", icon: "🔏", label: "DSA", sub: "FIPS 186" },
             ].map((s) => (
               <div
                 key={s.id}
@@ -194,6 +238,24 @@ export default function Lobby({ onJoin = () => {} }) {
             ))}
           </div>
         </div>
+
+        {/* Private key file picker */}
+        {scheme && player && (
+          <div style={styles.panel}>
+            <div style={styles.panelTitle}>
+              Load Your Private Key ({player}_{scheme.toLowerCase()}.priv)
+            </div>
+            <input
+              type="file"
+              accept=".priv,.pem,.key"
+              onChange={handleKeyFile}
+              style={styles.fileInput}
+            />
+            {keyFileName && (
+              <div style={styles.fileLoaded}>✓ Loaded: {keyFileName}</div>
+            )}
+          </div>
+        )}
 
         {/* Error */}
         {error && <div style={styles.errorBanner}>⚠ {error}</div>}
@@ -209,9 +271,8 @@ export default function Lobby({ onJoin = () => {} }) {
         </button>
 
         <p style={styles.finePrint}>
-          Session keys are ephemeral — never written to disk.
+          Private key held in memory only — never persisted.
         </p>
-
       </div>
     </div>
   );

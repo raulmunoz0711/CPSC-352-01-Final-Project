@@ -1,158 +1,201 @@
+/**
+ * crypto.js — client-side cryptography for Secure Internet Poker.
+ *
+ * Algorithms must match backend exactly:
+ *   - RSA: 2048-bit, SHA-256
+ *   - RSA-OAEP for wrapping session keys
+ *   - RSA-PSS for signing (salt length 222)
+ *   - DSA: 2048-bit, SHA-256, DER-encoded (jsrsasign)
+ *   - AES-GCM, 256-bit, 12-byte IV
+ */
+
+import { KEYUTIL, KJUR, hextob64, b64tohex } from "jsrsasign";
+
 const subtle = window.crypto.subtle;
 
-function b64(buffer) {
-  let bytes = new Uint8Array(buffer);
+// ---------- base64 helpers ----------
+
+function bytesToB64(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let str = "";
-  for (let i = 0; i < bytes.length; i++) {
-    str += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < arr.length; i++) str += String.fromCharCode(arr[i]);
   return btoa(str);
 }
 
-function fromB64(str) {
-  let raw = atob(str);
-  let bytes = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) {
-    bytes[i] = raw.charCodeAt(i);
+function b64ToBytes(s) {
+  const raw = atob(s);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+function utf8(s) {
+  return new TextEncoder().encode(s);
+}
+
+// ---------- PEM parsing helpers ----------
+
+function pemToBytes(pem) {
+  const body = pem
+    .replace(/-----BEGIN [^-]+-----/g, "")
+    .replace(/-----END [^-]+-----/g, "")
+    .replace(/[^A-Za-z0-9+/=]/g, "");
+  console.log("pemToBytes: body length =", body.length, "first 40 chars:", body.slice(0, 40));
+  return b64ToBytes(body);
+}
+// ---------- session key ----------
+
+export function generateSessionKey() {
+  // Raw 32 random bytes for AES-256
+  return crypto.getRandomValues(new Uint8Array(32));
+}
+
+async function importAesKey(rawBytes) {
+  return subtle.importKey("raw", rawBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+// Cache of imported AES keys keyed by raw bytes reference to avoid re-importing
+const aesKeyCache = new WeakMap();
+
+async function asAesKey(keyOrBytes) {
+  // Accept either raw Uint8Array or already-imported CryptoKey
+  if (keyOrBytes instanceof CryptoKey) return keyOrBytes;
+  const bytes = keyOrBytes instanceof Uint8Array ? keyOrBytes : new Uint8Array(keyOrBytes);
+  if (aesKeyCache.has(bytes)) return aesKeyCache.get(bytes);
+  const k = await importAesKey(bytes);
+  aesKeyCache.set(bytes, k);
+  return k;
+}
+
+// ---------- RSA-OAEP key wrap ----------
+
+async function importRsaOaepPublicKey(pem) {
+  return subtle.importKey(
+    "spki",
+    pemToBytes(pem),
+    { name: "RSA-OAEP", hash: "SHA-256" },
+    false,
+    ["encrypt"],
+  );
+}
+
+export async function wrapSessionKey(housePubPem, sessionKeyBytes) {
+  console.log("wrapSessionKey: starting, pem length =", housePubPem.length);
+  const pubKey = await importRsaOaepPublicKey(housePubPem);
+  console.log("wrapSessionKey: imported house pubkey OK");
+  const wrapped = await subtle.encrypt({ name: "RSA-OAEP" }, pubKey, sessionKeyBytes);
+  console.log("wrapSessionKey: encrypt OK, wrapped bytes =", wrapped.byteLength);
+  return bytesToB64(new Uint8Array(wrapped));
+}
+
+// ---------- RSA-PSS signing ----------
+
+async function importRsaPssPrivateKey(pem) {
+  return subtle.importKey(
+    "pkcs8",
+    pemToBytes(pem),
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+}
+
+async function importRsaPssPublicKey(pem) {
+  return subtle.importKey(
+    "spki",
+    pemToBytes(pem),
+    { name: "RSA-PSS", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+}
+
+export async function signRSA(privatePem, messageBytes) {
+  console.log("signRSA: starting, pem length =", privatePem.length);
+  const key = await importRsaPssPrivateKey(privatePem);
+  console.log("signRSA: imported private key OK");
+  const sig = await subtle.sign({ name: "RSA-PSS", saltLength: 222 }, key, messageBytes);
+  console.log("signRSA: signed OK, sig bytes =", sig.byteLength);
+  return new Uint8Array(sig);
+}
+
+export async function verifyRSA(publicPem, messageBytes, signatureBytes) {
+  const key = await importRsaPssPublicKey(publicPem);
+  const sigBuf = signatureBytes instanceof Uint8Array ? signatureBytes : new Uint8Array(signatureBytes);
+  return subtle.verify({ name: "RSA-PSS", saltLength: 222 }, key, sigBuf, messageBytes);
+}
+
+// ---------- DSA via jsrsasign ----------
+
+function bytesToHex(bytes) {
+  const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let hex = "";
+  for (let i = 0; i < arr.length; i++) {
+    hex += arr[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
   }
   return bytes;
 }
 
-export function createSessionKey() {
-  return crypto.getRandomValues(new Uint8Array(32));
+export async function signDSA(privatePem, messageBytes) {
+  const privKey = KEYUTIL.getKey(privatePem);
+  const sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
+  sig.init(privKey);
+  sig.updateHex(bytesToHex(messageBytes));
+  const sigHex = sig.sign();
+  return hexToBytes(sigHex);
 }
 
-export async function loadSessionKey(keyBytes) {
-  return subtle.importKey(
-    "raw",
-    keyBytes,
-    "AES-GCM",
-    false,
-    ["encrypt", "decrypt"]
-  );
+export async function verifyDSA(publicPem, messageBytes, signatureBytes) {
+  const pubKey = KEYUTIL.getKey(publicPem);
+  const sig = new KJUR.crypto.Signature({ alg: "SHA256withDSA" });
+  sig.init(pubKey);
+  sig.updateHex(bytesToHex(messageBytes));
+  const sigBytes = signatureBytes instanceof Uint8Array ? signatureBytes : new Uint8Array(signatureBytes);
+  return sig.verify(bytesToHex(sigBytes));
 }
 
-export async function encrypt(key, data) {
-  let iv = crypto.getRandomValues(new Uint8Array(12));
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-  let encrypted = await subtle.encrypt(
-    { name: "AES-GCM", iv: iv },
-    key,
-    new TextEncoder().encode(msg)
-  );
+// ---------- AES-GCM ----------
+
+export async function aesEncrypt(sessionKey, plaintext) {
+  const key = await asAesKey(sessionKey);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const msgBytes = typeof plaintext === "string" ? utf8(plaintext) : new Uint8Array(plaintext);
+  const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, msgBytes);
   return {
-    ciphertext: b64(encrypted),
-    iv: b64(iv),
+    ciphertext: bytesToB64(new Uint8Array(ciphertext)),
+    iv: bytesToB64(iv),
   };
 }
 
-export async function decrypt(key, envelope) {
-  let plaintext = await subtle.decrypt(
-    { name: "AES-GCM", iv: fromB64(envelope.iv) },
+export async function aesDecrypt(sessionKey, ivB64, ciphertextB64) {
+  const key = await asAesKey(sessionKey);
+  const plaintext = await subtle.decrypt(
+    { name: "AES-GCM", iv: b64ToBytes(ivB64) },
     key,
-    fromB64(envelope.ciphertext)
+    b64ToBytes(ciphertextB64),
   );
-  let msg = new TextDecoder().decode(plaintext);
+  const text = new TextDecoder().decode(plaintext);
   try {
-    return JSON.parse(msg);
+    return JSON.parse(text);
   } catch {
-    return msg;
+    return text;
   }
 }
 
+// ---------- Utility: fetch house public key from backend ----------
 
-export async function makeEnvelope(key, data, seq, sender) {
-  let encrypted = await encrypt(key, data);
-  let signatureText = sender + ":" + seq;
-  return {
-    ciphertext: encrypted.ciphertext,
-    iv: encrypted.iv,
-    seq: seq,
-    signature: b64(new TextEncoder().encode(signatureText)),
-    signature_algo: "demo",
-    sender: sender,
-  };
-}
-
-export function verifyEnvelope(envelope) {
-  if (envelope == null) {
-    return false;
-  }
-  if (!envelope.ciphertext) {
-    return false;
-  }
-  if (!envelope.iv) {
-    return false;
-  }
-  if (!envelope.signature) {
-    return false;
-  }
-  return true;
-}
-
-export function clearSessionKey(keyBytes) {
-  keyBytes.fill(0);
-}
-export function generateSessionKey() {
-  return createSessionKey();
-}
-
-export async function aesEncrypt(key, data) {
-  return encrypt(key, data);
-}
-
-export async function aesDecrypt(key, iv, ciphertext) {
-  return decrypt(key, {
-    iv: iv,
-    ciphertext: ciphertext,
-  });
-}
-
-export async function wrapSessionKey(housePublicKey, sessionKeyBytes) {
-  return b64(sessionKeyBytes);
-}
-
-export async function signRSA(key, data) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-  return b64(new TextEncoder().encode(msg));
-}
-
-export async function verifyRSA(key, data, signature) {
-  if (signature == null) {
-    return false;
-  }
-  if (signature === "") {
-    return false;
-  }
-  return true;
-}
-
-export async function signDSA(key, data) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-  return b64(new TextEncoder().encode(msg));
-}
-
-export async function verifyDSA(key, data, signature) {
-  if (signature == null) {
-    return false;
-  }
-  if (signature === "") {
-    return false;
-  }
-  return true;
+export async function fetchHousePublicKey(algo, apiBase = "") {
+  const base = apiBase || (import.meta.env?.VITE_API_BASE_URL || "http://localhost:8000");
+  const r = await fetch(`${base}/auth/house-pubkey/${algo.toLowerCase()}`);
+  if (!r.ok) throw new Error(`failed to fetch house public key: ${r.status}`);
+  const data = await r.json();
+  return data.pem;
 }

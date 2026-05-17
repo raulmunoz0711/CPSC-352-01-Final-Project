@@ -127,49 +127,38 @@ const styles = {
       marginTop: "0.5rem",
     },
   };
-  
-  /**
-   * Result
-   *
-   * Props (from App.jsx once backend is wired):
-   *   playerName    {string}   e.g. "Player 1"
-   *   roundHistory  {Array}    [{ round, mine, opp, result }]  result = "win"|"lose"|"tie"
-   *   playerScore   {number}   total wins
-   *   opponentScore {number}   total opponent wins
-   *   sessionKey    {string}   short preview of session key (will be shown as destroyed)
-   *   onPlayAgain   {function} called when Play Again is clicked
-   */
+
   export default function Result({
     playerName    = "Player 1",
-    roundHistory  = [
-      { round: 1, mine: 7,  opp: 4,  result: "win"  },
-      { round: 2, mine: 3,  opp: 11, result: "lose" },
-      { round: 3, mine: 14, opp: 9,  result: "win"  },
-    ],
-    playerScore   = 2,
-    opponentScore = 1,
-    sessionKey    = "a3f9c1d2...4e8b",
+    roundHistory  = [],
+    playerScore   = 0,
+    opponentScore = 0,
+    sessionKey    = "session-ended",
     onPlayAgain   = () => {},
   }) {
     const playerWon = playerScore > opponentScore;
     const tie       = playerScore === opponentScore;
-  
+
     const winnerLabel = tie
       ? "Draw"
       : playerWon
       ? `${playerName} Wins!`
       : "Opponent Wins";
-  
+
     const winnerSub = tie
       ? "Both players won the same number of rounds."
       : playerWon
       ? `Won ${playerScore} of 3 rounds`
       : `Opponent won ${opponentScore} of 3 rounds`;
-  
+
+    // Session key display: if backend returned the sentinel "session-ended",
+    // just show "—" since the key was never meant to be visible.
+    const sessionKeyDisplay = sessionKey === "session-ended" ? "—" : sessionKey;
+
     return (
       <div style={styles.wrapper}>
         <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-  
+
         <div style={styles.container}>
           {/* Logo */}
           <div style={styles.logo}>
@@ -177,14 +166,14 @@ const styles = {
             <h1 style={styles.logoH1}>Secure Poker</h1>
             <p style={styles.logoSub}>CPSC 352 · Cryptographic Protocol</p>
           </div>
-  
+
           {/* Winner banner */}
           <div style={styles.winnerBanner(playerWon, tie)}>
             <div style={styles.suitRow}>♠ ♥ ♦ ♣</div>
             <h2 style={styles.winnerName}>{winnerLabel}</h2>
             <p style={styles.winnerSub}>{winnerSub}</p>
           </div>
-  
+
           {/* Round summary */}
           <div style={styles.panel}>
             <div style={styles.panelTitle}>Round Summary</div>
@@ -211,13 +200,13 @@ const styles = {
               </tbody>
             </table>
           </div>
-  
+
           {/* Session teardown */}
           <div style={styles.panel}>
             <div style={styles.panelTitle}>Session Teardown</div>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>Session key</span>
-              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.72rem", color: "#e8e0d0" }}>{sessionKey}</span>
+              <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: "0.72rem", color: "#888880" }}>{sessionKeyDisplay}</span>
             </div>
             <div style={styles.infoRow}>
               <span style={styles.infoLabel}>Key status</span>
@@ -227,7 +216,7 @@ const styles = {
               Session key has been securely wiped from memory. No forward secrets remain.
             </p>
           </div>
-  
+
           <button style={styles.btn} onClick={onPlayAgain}>
             Play Again
           </button>
