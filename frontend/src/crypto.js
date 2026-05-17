@@ -98,61 +98,89 @@ export function verifyEnvelope(envelope) {
 export function clearSessionKey(keyBytes) {
   keyBytes.fill(0);
 }
+
+function isBytes(value) {
+  return value instanceof Uint8Array || value instanceof ArrayBuffer;
+}
+
+function getBytes(value) {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (typeof value === "string") {
+    return new TextEncoder().encode(value);
+  }
+  return new TextEncoder().encode(JSON.stringify(value));
+}
+
+async function getAesKey(key) {
+  if (key && key.type === "secret") {
+    return key;
+  }
+  return loadSessionKey(key);
+}
+
 export function generateSessionKey() {
   return createSessionKey();
 }
 
 export async function aesEncrypt(key, data) {
-  return encrypt(key, data);
+  let aesKey = await getAesKey(key);
+  return encrypt(aesKey, data);
 }
 
 export async function aesDecrypt(key, iv, ciphertext) {
-  return decrypt(key, {
+  let aesKey = await getAesKey(key);
+  return decrypt(aesKey, {
     iv: iv,
     ciphertext: ciphertext,
   });
 }
 
 export async function wrapSessionKey(housePublicKey, sessionKeyBytes) {
-  return b64(sessionKeyBytes);
+  let wrapped = await subtle.encrypt(
+    { name: "RSA-OAEP" },
+    housePublicKey,
+    sessionKeyBytes
+  );
+  return b64(wrapped);
 }
 
-export async function signRSA(key, data) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-  return b64(new TextEncoder().encode(msg));
+export async function signRSA(privateKey, data) {
+  let signature = await subtle.sign(
+    { name: "RSA-PSS", saltLength: 32 },
+    privateKey,
+    getBytes(data)
+  );
+  return b64(signature);
 }
 
-export async function verifyRSA(key, data, signature) {
-  if (signature == null) {
-    return false;
-  }
-  if (signature === "") {
-    return false;
-  }
-  return true;
+export async function verifyRSA(publicKey, data, signature) {
+  return subtle.verify(
+    { name: "RSA-PSS", saltLength: 32 },
+    publicKey,
+    isBytes(signature) ? signature : fromB64(signature),
+    getBytes(data)
+  );
 }
 
-export async function signDSA(key, data) {
-  let msg = "";
-  if (typeof data === "string") {
-    msg = data;
-  } else {
-    msg = JSON.stringify(data);
-  }
-  return b64(new TextEncoder().encode(msg));
+export async function signDSA(privateKey, data) {
+  let signature = await subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    getBytes(data)
+  );
+  return b64(signature);
 }
 
-export async function verifyDSA(key, data, signature) {
-  if (signature == null) {
-    return false;
-  }
-  if (signature === "") {
-    return false;
-  }
-  return true;
+export async function verifyDSA(publicKey, data, signature) {
+  return subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    publicKey,
+    isBytes(signature) ? signature : fromB64(signature),
+    getBytes(data)
+  );
 }
