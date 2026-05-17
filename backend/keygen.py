@@ -23,9 +23,9 @@ ENTITIES = ["house", "player1", "player2"]
 
 for entity in ENTITIES:
     priv, pub = rsa_generate_keypair()
-    (KEYS_DIR / f"{entity}_rsa.pub").write_bytes(rsa_serialize_public(pub))
-    (KEYS_DIR / f"{entity}_rsa.priv").write_bytes(rsa_serialize_public(priv))
+    open(KEYS_DIR / f"{entity}_rsa.pub", "wb").write(rsa_serialize_public(pub))
+    open(KEYS_DIR / f"{entity}_rsa.priv", "wb").write(rsa_serialize_public(priv))
 
     priv, pub = dsa_generate_keypair()
-    (KEYS_DIR / f"{entity}_dsa.pub").write_bytes(dsa_serialize_public(pub))
-    (KEYS_DIR / f"{entity}_dsa.priv").write_bytes(dsa_serialize_public(priv))
+    open(KEYS_DIR / f"{entity}_dsa.pub", "wb").write(dsa_serialize_public(pub))
+    open(KEYS_DIR / f"{entity}_dsa.priv", "wb").write(dsa_serialize_public(priv))
