@@ -90,7 +90,7 @@ In each window:
 
 The first player to enter will see "Waiting for second player…" until the second player joins. Then both clients jump to the game board.
 
-Play three rounds. The winner screen has a **Play Again** button that tears down the session and returns both players to the lobby.
+Play three rounds.
 
 ## Replaying
 
