@@ -31,4 +31,83 @@ This is the GitHub, allowing all team members to collaborate on the CPSC 352-01 
 | Jg Guerrero | `GameBoard.jsx`, `Result.jsx` | Owns gameplay UI |
 
 # How to Run
-- tbd
+
+## Requirements
+
+- **Python 3.10+** (3.12 or 3.13 recommended)
+- **Node.js 18+** with `npm`
+- **Google Chrome**
+
+## First-time setup
+
+```bash
+# Backend
+cd backend
+pip install -r requirements.txt
+python keygen.py # generates the rsa and dsa keys for upload
+```
+
+
+```bash
+# Frontend
+cd ../frontend
+npm install
+```
+
+## Running the app
+
+Two terminals.
+
+**Terminal 1 (backend):**
+```bash
+cd backend
+uvicorn main:app --reload
+```
+Serves on `http://localhost:8000`.
+
+**Terminal 2 (frontend):**
+```bash
+cd frontend
+npm run dev
+```
+Serves on `http://localhost:5173`.
+
+## Playing a game
+
+Open two Chrome windows so the sessions stay isolated:
+
+1. **Player 1:** regular Chrome window → `http://localhost:5173`
+2. **Player 2:** **incognito** Chrome window → `http://localhost:5173`
+
+In each window:
+
+1. Pick the player slot (Player 1 or Player 2)
+2. Pick a signature scheme (RSA-PSS or DSA)
+3. Upload that player's private key file from `keys/<player>/<player>_<scheme>.priv`
+   - e.g. Player 1 with RSA → `keys/player1/player1_rsa.priv`
+   - e.g. Player 2 with DSA → `keys/player2/player2_dsa.priv`
+4. Click **Enter the Table**
+
+The first player to enter will see "Waiting for second player…" until the second player joins. Then both clients jump to the game board.
+
+Play three rounds. The winner screen has a **Play Again** button that tears down the session and returns both players to the lobby.
+
+## Replaying
+
+- **In order to replay the game:** 
+1. Ctrl+C your backend running uvicorn
+2. Ctrl+C your frontend running dev
+3. Close both existing tabs (regular window and incognito window) running localhost
+4. Open up new tabs
+5. run the commands again for backend and frontend
+
+**Terminal 1 (/backend):**
+```bash
+uvicorn main:app --reload
+```
+
+**Terminal 2 (/frontend):**
+```bash
+npm run dev
+```
+6. put in the URL for both open tabs `http://localhost:5173`
