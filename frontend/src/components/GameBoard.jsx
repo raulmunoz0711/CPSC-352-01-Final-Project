@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as api from "../api";
 
 const styles = {
   wrapper: {
@@ -28,7 +29,7 @@ const styles = {
   },
   panel: {
     background: "#181818",
-    border: "1px solid #2a2a2a",
+    border: "none",
     borderRadius: "4px",
     padding: "1.75rem",
     marginBottom: "1rem",
@@ -134,6 +135,7 @@ const styles = {
   },
   logOk:   { color: "#4caf7d" },
   logInfo: { color: "#c9a84c" },
+  logErr:  { color: "#e57373" },
   badge: {
     display: "inline-block",
     fontFamily: "'IBM Plex Mono', monospace",
@@ -146,6 +148,17 @@ const styles = {
   badgeWin:  { background: "rgba(39,174,96,0.15)",  color: "#4caf7d", border: "1px solid rgba(39,174,96,0.3)"  },
   badgeLose: { background: "rgba(192,57,43,0.15)",  color: "#e57373", border: "1px solid rgba(192,57,43,0.3)"  },
   badgeTie:  { background: "rgba(201,168,76,0.15)", color: "#c9a84c", border: "1px solid rgba(201,168,76,0.3)" },
+  errorBanner: {
+    background: "rgba(192,57,43,0.08)",
+    border: "1px solid rgba(192,57,43,0.3)",
+    borderRadius: "2px",
+    color: "#e57373",
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: "0.65rem",
+    padding: "0.6rem 0.85rem",
+    marginBottom: "1rem",
+    letterSpacing: "0.05em",
+  },
 };
 
 function RoundPip({ number, state }) {
@@ -164,21 +177,6 @@ function RoundPip({ number, state }) {
   return <div style={pip}>{number}</div>;
 }
 
-// ─── mock helpers ──────────────────────────────────────────────────────────
-// TODO (Person F): replace these with real calls from api.js
-async function getNumbers() {
-  await delay(300);
-  return Array.from({ length: 3 }, () => Math.floor(Math.random() * 15) + 1);
-}
-
-async function submitChoice(chosenNumber) {
-  await delay(600);
-  const oppPick = Math.floor(Math.random() * 15) + 1;
-  const result  = chosenNumber > oppPick ? "win" : chosenNumber < oppPick ? "lose" : "tie";
-  return { oppPick, result };
-}
-// ──────────────────────────────────────────────────────────────────────────
-
 /**
  * GameBoard
  *
@@ -189,7 +187,7 @@ async function submitChoice(chosenNumber) {
 export default function GameBoard({ onGameOver = () => {} }) {
   const [currentRound,  setCurrentRound]  = useState(1);
   const [numbers,       setNumbers]       = useState([]);
-  const [selected,      setSelected]      = useState(null);
+  const [selectedIdx,   setSelectedIdx]   = useState(null); // track by INDEX not value
   const [playerScore,   setPlayerScore]   = useState(0);
   const [opponentScore, setOpponentScore] = useState(0);
   const [lastResult,    setLastResult]    = useState(null);
@@ -197,16 +195,25 @@ export default function GameBoard({ onGameOver = () => {} }) {
   const [isWaiting,     setIsWaiting]     = useState(false);
   const [isLoadingNums, setIsLoadingNums] = useState(true);
   const [log,           setLog]           = useState([]);
+  const [error,         setError]         = useState(null);
 
-  // Fetch numbers from house whenever round changes
+  // Fetch numbers from house at the start of each round
   useEffect(() => {
     setIsLoadingNums(true);
-    setSelected(null);
+    setSelectedIdx(null);
     setLog([]);
-    getNumbers().then((nums) => {
-      setNumbers(nums);
-      setIsLoadingNums(false);
-    });
+    setError(null);
+
+    api.getDealtNumbers()
+      .then((nums) => {
+        setNumbers(nums);
+        setIsLoadingNums(false);
+      })
+      .catch((err) => {
+        // Could be a signature verification failure from api.js
+        setError(err.message || "Failed to receive numbers from house.");
+        setIsLoadingNums(false);
+      });
   }, [currentRound]);
 
   function addLog(type, msg) {
@@ -214,50 +221,71 @@ export default function GameBoard({ onGameOver = () => {} }) {
   }
 
   async function handleSubmit() {
-    if (selected === null || isWaiting || isLoadingNums) return;
+    if (selectedIdx === null || isWaiting || isLoadingNums) return;
+
+    const chosenNumber = numbers[selectedIdx];
     setIsWaiting(true);
+    setError(null);
 
-    addLog("info", `Signing choice (${selected}) with RSA-PSS…`);
-    await delay(400);
-    addLog("ok", "  ✓ Signature generated");
-    await delay(300);
+    addLog("info", `Signing choice (${chosenNumber})…`);
     addLog("info", "Encrypting with AES-GCM session key → sending…");
-    await delay(400);
-    addLog("ok", "  ✓ House received & verified your choice");
-    addLog("info", "Waiting for opponent…");
 
-    const { oppPick, result } = await submitChoice(selected);
+    try {
+      // api.js handles signing + encrypting the envelope
+      const { oppPick, result } = await api.submitChoice(currentRound, chosenNumber);
 
-    addLog(
-      result === "win" ? "ok" : "info",
-      `  You(${selected}) vs Opp(${oppPick}) → ${result.toUpperCase()}`
-    );
+      addLog("ok", "  ✓ House received & verified your choice");
+      addLog(
+        result === "win" ? "ok" : "info",
+        `  You(${chosenNumber}) vs Opp(${oppPick}) → ${result.toUpperCase()}`
+      );
 
-    const newPlayerScore   = playerScore   + (result === "win"  ? 1 : 0);
-    const newOpponentScore = opponentScore + (result === "lose" ? 1 : 0);
-    const newHistory = [
-      ...roundHistory,
-      { round: currentRound, mine: selected, opp: oppPick, result },
-    ];
+      const newPlayerScore   = playerScore   + (result === "win"  ? 1 : 0);
+      const newOpponentScore = opponentScore + (result === "lose" ? 1 : 0);
+      const newHistory = [
+        ...roundHistory,
+        { round: currentRound, mine: chosenNumber, opp: oppPick, result },
+      ];
 
-    setPlayerScore(newPlayerScore);
-    setOpponentScore(newOpponentScore);
-    setRoundHistory(newHistory);
-    setLastResult(result);
-    setIsWaiting(false);
+      setPlayerScore(newPlayerScore);
+      setOpponentScore(newOpponentScore);
+      setRoundHistory(newHistory);
+      setLastResult(result);
+      setIsWaiting(false);
 
-    await delay(800);
+      await delay(800);
 
-    if (currentRound < 3) {
-      setCurrentRound(r => r + 1);
-    } else {
-      // All 3 rounds done — call App's onGameOver
-      onGameOver({
-        playerScore:   newPlayerScore,
-        opponentScore: newOpponentScore,
-        roundHistory:  newHistory,
-        sessionKey:    "a3f9c1d2...4e8b", // TODO: pass real session key from api.js
-      });
+      if (currentRound < 3) {
+        setCurrentRound(r => r + 1);
+      } else {
+        // All 3 rounds done — get final result (api.js verifies house signature)
+        try {
+          const finalResult = await api.getResult();
+          onGameOver({
+            playerScore:   newPlayerScore,
+            opponentScore: newOpponentScore,
+            roundHistory:  newHistory,
+            sessionKey:    finalResult.sessionKey || "session-ended",
+          });
+        } catch (err) {
+          // Never display unverified results
+          setError(
+            err.message === "signature verification failed"
+              ? "⚠ Winner announcement could not be verified. Signature check failed."
+              : err.message || "Failed to retrieve final result."
+          );
+          setIsWaiting(false);
+        }
+      }
+    } catch (err) {
+      // api.js threw — could be signature verification failure or network error
+      addLog("err", `  ✗ ${err.message}`);
+      setError(
+        err.message === "signature verification failed"
+          ? "⚠ Server response could not be verified. Signature check failed."
+          : err.message || "Something went wrong. Please try again."
+      );
+      setIsWaiting(false);
     }
   }
 
@@ -278,6 +306,11 @@ export default function GameBoard({ onGameOver = () => {} }) {
           <h1 style={styles.logoH1}>Secure Poker</h1>
           <p style={styles.logoSub}>CPSC 352 · Cryptographic Protocol</p>
         </div>
+
+        {/* Error banner — shown when api.js throws signature verification failure */}
+        {error && (
+          <div style={styles.errorBanner}>⚠ {error}</div>
+        )}
 
         {/* Round tracker */}
         <div style={styles.panel}>
@@ -323,23 +356,23 @@ export default function GameBoard({ onGameOver = () => {} }) {
 
           <div style={styles.numberGrid}>
             {isLoadingNums
-              ? [1, 2, 3].map(i => (
+              ? [0, 1, 2].map(i => (
                   <div key={i} style={{ ...styles.numCardBase, opacity: 0.4 }}>
                     <span style={styles.numVal}>—</span>
                     <span style={styles.numLabel}>loading…</span>
                   </div>
                 ))
-              : numbers.map((n) => (
+              : numbers.map((n, i) => (
                   <div
-                    key={n}
+                    key={i}
                     style={{
                       ...styles.numCardBase,
-                      ...(selected === n ? styles.numCardSelected : {}),
+                      ...(selectedIdx === i ? styles.numCardSelected : {}),
                     }}
-                    onClick={() => !isWaiting && setSelected(n)}
+                    onClick={() => !isWaiting && setSelectedIdx(i)}
                   >
                     <span style={styles.numVal}>{n}</span>
-                    <span style={styles.numLabel}>{selected === n ? "selected" : "tap to pick"}</span>
+                    <span style={styles.numLabel}>{selectedIdx === i ? "selected" : "tap to pick"}</span>
                   </div>
                 ))
             }
@@ -348,10 +381,10 @@ export default function GameBoard({ onGameOver = () => {} }) {
           <button
             style={{
               ...styles.btn,
-              ...(selected === null || isWaiting || isLoadingNums ? styles.btnDisabled : {}),
+              ...(selectedIdx === null || isWaiting || isLoadingNums ? styles.btnDisabled : {}),
             }}
             onClick={handleSubmit}
-            disabled={selected === null || isWaiting || isLoadingNums}
+            disabled={selectedIdx === null || isWaiting || isLoadingNums}
           >
             {isWaiting ? "⏳  Waiting for opponent…" : "Submit Choice"}
           </button>
@@ -359,7 +392,7 @@ export default function GameBoard({ onGameOver = () => {} }) {
           {log.length > 0 && (
             <div style={styles.cryptoLog}>
               {log.map((l, i) => (
-                <span key={i} style={l.type === "ok" ? styles.logOk : styles.logInfo}>
+                <span key={i} style={l.type === "ok" ? styles.logOk : l.type === "err" ? styles.logErr : styles.logInfo}>
                   {l.msg}{"\n"}
                 </span>
               ))}
