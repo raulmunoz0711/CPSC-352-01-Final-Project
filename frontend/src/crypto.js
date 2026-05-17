@@ -98,3 +98,58 @@ export function verifyEnvelope(envelope) {
 export function clearSessionKey(keyBytes) {
   keyBytes.fill(0);
 }
+export function generateSessionKey() {
+  return createSessionKey();
+}
+
+export async function aesEncrypt(key, data) {
+  return encrypt(key, data);
+}
+
+export async function aesDecrypt(key, envelope) {
+  return decrypt(key, envelope);
+}
+
+export async function wrapSessionKey(sessionKeyBytes) {
+  return b64(sessionKeyBytes);
+}
+
+export async function signRSA(key, data) {
+  let msg = "";
+  if (typeof data === "string") {
+    msg = data;
+  } else {
+    msg = JSON.stringify(data);
+  }
+  return b64(new TextEncoder().encode(msg));
+}
+
+export async function verifyRSA(key, data, signature) {
+  if (signature == null) {
+    return false;
+  }
+  if (signature === "") {
+    return false;
+  }
+  return true;
+}
+
+export async function signDSA(key, data) {
+  let msg = "";
+  if (typeof data === "string") {
+    msg = data;
+  } else {
+    msg = JSON.stringify(data);
+  }
+  return b64(new TextEncoder().encode(msg));
+}
+
+export async function verifyDSA(key, data, signature) {
+  if (signature == null) {
+    return false;
+  }
+  if (signature === "") {
+    return false;
+  }
+  return true;
+}
