@@ -3,9 +3,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const POLL_INTERVAL_MS = 500;
 const MAX_POLL_ATTEMPTS = 120;
 
-let currentSession = null;
-let gameStarted = false;
-
 const REQUIRED_CRYPTO_HELPERS = [
   "generateSessionKey",
   "wrapSessionKey",
@@ -17,14 +14,16 @@ const REQUIRED_CRYPTO_HELPERS = [
   "aesDecrypt",
 ];
 
-async function resolveCryptoHelpers() {
+let currentSession = null;
+let gameStarted = false;
+
+async function resolveCryptoHelpers(required = REQUIRED_CRYPTO_HELPERS) {
   const cryptoModule = await import("./crypto.js");
-  const missing = REQUIRED_CRYPTO_HELPERS.filter((name) => typeof cryptoModule[name] !== "function");
+  const missing = required.filter((name) => typeof cryptoModule[name] !== "function");
 
   if (missing.length > 0) {
     throw new Error(
-      `Final crypto helpers are missing from crypto.js: ${missing.join(", ")}. ` +
-      "Do not use demo envelopes for the final protocol."
+      `Missing crypto helper: ${missing[0]}. Person E needs to provide this in crypto.js.`
     );
   }
 
@@ -82,25 +81,30 @@ async function pollJson(path, body) {
   throw new Error("Timed out waiting for game result.");
 }
 
-function formatBackendError(data, status) {
-  if (typeof data?.error === "string") return data.error;
-  if (typeof data?.detail === "string") return data.detail;
-  if (data?.detail !== undefined) return JSON.stringify(data.detail);
-  return `Request failed with status ${status}.`;
-}
-
 function requireSession() {
-  if (!currentSession?.sessionId || !currentSession?.player || !currentSession?.aesKey) {
-    throw new Error("No active encrypted session. Complete the auth/session handshake first.");
+  if (!currentSession?.sessionId || !currentSession?.player) {
+    throw new Error("No active session. Join a session before starting the game.");
   }
 
   return currentSession;
 }
 
-function normalizeSignatureAlgo(scheme) {
-  if (scheme === "RSA" || scheme === "RSA-PSS") return "RSA";
-  if (scheme === "DSA") return "DSA";
-  throw new Error("Unsupported signature scheme. Expected RSA-PSS, RSA, or DSA.");
+function requireEncryptedSession() {
+  const session = requireSession();
+  const missing = [];
+
+  if (!session.aesKey) missing.push("session AES key");
+  if (!session.playerPrivateKey) missing.push("playerPrivateKey");
+  if (!session.housePublicKey) missing.push("housePublicKey");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Encrypted game flow needs ${missing.join(", ")}. ` +
+      "Pass the missing key material to joinSession when Lobby/App integration is ready."
+    );
+  }
+
+  return session;
 }
 
 function toBackendPlayerId(player) {
@@ -115,6 +119,12 @@ function senderForPlayer(player) {
   throw new Error("Unknown player. Expected player1 or player2.");
 }
 
+function normalizeSignatureAlgo(scheme) {
+  if (scheme === "RSA" || scheme === "RSA-PSS") return "RSA";
+  if (scheme === "DSA") return "DSA";
+  throw new Error("Unsupported signature scheme. Expected RSA-PSS, RSA, or DSA.");
+}
+
 function translateWinner(winner, playerId) {
   if (winner === "Tie" || winner === "tie") return "tie";
   if (winner === playerId) return "win";
@@ -123,12 +133,17 @@ function translateWinner(winner, playerId) {
 }
 
 function getOpponentChoice(payload, playerId) {
-  if (payload.opponent_choice !== undefined) return payload.opponent_choice;
+  if (payload.opponent_choice !== undefined) {
+    return payload.opponent_choice;
+  }
 
   const opponentId = playerId === "P1" ? "P2" : "P1";
   const opponentChoiceKey = `${opponentId}_choice`;
 
-  if (payload[opponentChoiceKey] !== undefined) return payload[opponentChoiceKey];
+  if (payload[opponentChoiceKey] !== undefined) {
+    return payload[opponentChoiceKey];
+  }
+
   throw new Error("Round result is missing opponent choice.");
 }
 
@@ -148,8 +163,19 @@ function normalizeRoundResult(payload, playerId) {
   };
 }
 
+function formatBackendError(data, status) {
+  if (typeof data?.error === "string") return data.error;
+  if (typeof data?.detail === "string") return data.detail;
+  if (data?.detail !== undefined) return JSON.stringify(data.detail);
+  return `Request failed with status ${status}.`;
+}
+
+function hasEnvelope(data) {
+  return Boolean(data && typeof data === "object" && data.envelope);
+}
+
 function requireEnvelope(data) {
-  if (!data || typeof data !== "object" || !data.envelope) {
+  if (!hasEnvelope(data)) {
     throw new Error("Expected encrypted envelope response from backend.");
   }
 
@@ -197,12 +223,25 @@ function concatBytes(...parts) {
   return output;
 }
 
+function utf8Bytes(value) {
+  return new TextEncoder().encode(value);
+}
+
 function bytesToSign(ivB64, ciphertextB64, seq) {
   return concatBytes(b64ToBytes(ivB64), b64ToBytes(ciphertextB64), seqToBytes(seq));
 }
 
-function utf8Bytes(value) {
-  return new TextEncoder().encode(value);
+function bytesLikeToB64(value) {
+  if (typeof value === "string") return value;
+  return bytesToB64(new Uint8Array(value));
+}
+
+async function importAesKeyIfNeeded(helpers, keyBytes) {
+  if (typeof helpers.loadSessionKey === "function") {
+    return helpers.loadSessionKey(keyBytes);
+  }
+
+  return keyBytes;
 }
 
 async function signMessage(helpers, signatureAlgo, privateKey, messageBytes) {
@@ -218,7 +257,7 @@ async function verifyMessage(helpers, signatureAlgo, publicKey, messageBytes, si
 }
 
 async function buildEnvelope(plaintext) {
-  const session = requireSession();
+  const session = requireEncryptedSession();
   const helpers = await resolveCryptoHelpers();
   const seq = session.nextSendSeq;
   const encrypted = await helpers.aesEncrypt(session.aesKey, plaintext);
@@ -234,19 +273,19 @@ async function buildEnvelope(plaintext) {
     ciphertext: encrypted.ciphertext,
     iv: encrypted.iv,
     seq,
-    signature: typeof signatureBytes === "string" ? signatureBytes : bytesToB64(new Uint8Array(signatureBytes)),
+    signature: bytesLikeToB64(signatureBytes),
     signature_algo: session.signatureAlgo,
     sender: senderForPlayer(session.player),
   };
 }
 
 async function openEnvelope(data) {
-  const session = requireSession();
+  const session = requireEncryptedSession();
   const helpers = await resolveCryptoHelpers();
   const envelope = requireEnvelope(data);
 
   if (envelope.signature_algo === "demo") {
-    throw new Error("Refusing demo signature envelope in final API implementation.");
+    throw new Error("Refusing demo signature envelope in api.js.");
   }
 
   if (envelope.seq !== session.nextRecvSeq) {
@@ -288,51 +327,81 @@ async function ensureGameStarted(sessionId) {
   }
 }
 
+async function tryFinalAuthSession({
+  player,
+  playerId,
+  signatureAlgo,
+  sessionKeyBytes,
+  playerPrivateKey,
+  housePublicKey,
+}) {
+  if (!playerPrivateKey || !housePublicKey || !sessionKeyBytes) {
+    return null;
+  }
+
+  const helpers = await resolveCryptoHelpers([
+    "wrapSessionKey",
+    "signRSA",
+    "signDSA",
+  ]);
+  const wrappedSessionKey = await helpers.wrapSessionKey(housePublicKey, sessionKeyBytes);
+  const wrappedSessionKeyB64 = bytesLikeToB64(wrappedSessionKey);
+  const authMessage = JSON.stringify({
+    player_id: playerId,
+    scheme: signatureAlgo,
+    wrapped_session_key: wrappedSessionKeyB64,
+  });
+  const authSignature = await signMessage(
+    helpers,
+    signatureAlgo,
+    playerPrivateKey,
+    utf8Bytes(authMessage)
+  );
+
+  try {
+    return await requestJson("/auth/session", {
+      player,
+      player_id: playerId,
+      scheme: signatureAlgo,
+      wrapped_session_key: wrappedSessionKeyB64,
+      signature_algo: signatureAlgo,
+      signature: bytesLikeToB64(authSignature),
+    });
+  } catch (err) {
+    if (err.status === 404 || err.status === 405) {
+      return null;
+    }
+
+    throw err;
+  }
+}
+
 export async function joinSession({
   player,
   scheme,
-  playerPrivateKey,
-  housePublicKey,
-  sessionKeyBytes,
+  playerPrivateKey = null,
+  housePublicKey = null,
+  playerPublicKey = null,
+  sessionKeyBytes = null,
 } = {}) {
   if (!player || !scheme) {
     throw new Error("Player and signature scheme are required.");
   }
 
-  if (!playerPrivateKey || !housePublicKey) {
-    throw new Error(
-      "Final joinSession requires playerPrivateKey and housePublicKey from Lobby/App integration."
-    );
-  }
-
-  const helpers = await resolveCryptoHelpers();
+  const helpers = await resolveCryptoHelpers(["generateSessionKey"]);
+  const playerId = toBackendPlayerId(player);
   const signatureAlgo = normalizeSignatureAlgo(scheme);
-  const rawSessionKey = sessionKeyBytes || await helpers.generateSessionKey();
-
-  const wrappedSessionKey = await helpers.wrapSessionKey(housePublicKey, rawSessionKey);
-  const wrappedSessionKeyB64 = typeof wrappedSessionKey === "string"
-    ? wrappedSessionKey
-    : bytesToB64(new Uint8Array(wrappedSessionKey));
-  // Sign the raw wrapped-session-key bytes.
-  const wrappedBytes = b64ToBytes(wrappedSessionKeyB64);
-  const authSignature = await signMessage(
-    helpers,
-    signatureAlgo,
-    playerPrivateKey,
-    wrappedBytes
-  );
-  const authBody = {
+  const rawSessionKey = sessionKeyBytes || helpers.generateSessionKey();
+  const aesKey = await importAesKeyIfNeeded(helpers, rawSessionKey);
+  const finalAuthData = await tryFinalAuthSession({
     player,
-    player_id: toBackendPlayerId(player),
-    scheme: signatureAlgo,
-    wrapped_session_key: wrappedSessionKeyB64,
-    signature_algo: signatureAlgo,
-    signature: typeof authSignature === "string"
-      ? authSignature
-      : bytesToB64(new Uint8Array(authSignature)),
-  };
-
-  const data = await requestJson("/auth/session", authBody);
+    playerId,
+    signatureAlgo,
+    sessionKeyBytes: rawSessionKey,
+    playerPrivateKey,
+    housePublicKey,
+  });
+  const data = finalAuthData || await requestJson("/auth", { player, scheme });
   const sessionId = data.sessionId || data.session_id;
 
   if (!sessionId) {
@@ -342,28 +411,20 @@ export async function joinSession({
   currentSession = {
     sessionId,
     player,
-    playerId: toBackendPlayerId(player),
+    playerId,
+    scheme,
     signatureAlgo,
     sessionKeyBytes: rawSessionKey,
-    aesKey: rawSessionKey,
+    aesKey,
     playerPrivateKey,
     housePublicKey,
+    playerPublicKey,
     nextSendSeq: 0,
     nextRecvSeq: 0,
   };
   gameStarted = false;
 
   return { sessionId };
-}
-
-export async function waitForBothPlayers(sessionId, intervalMs = 500, maxAttempts = 240) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const r = await fetch(`${API_BASE}/auth/status/${sessionId}`);
-    const data = await r.json();
-    if (data.both_ready) return;
-    await new Promise(res => setTimeout(res, intervalMs));
-  }
-  throw new Error("Timed out waiting for second player.");
 }
 
 export async function getDealtNumbers() {
@@ -375,13 +436,20 @@ export async function getDealtNumbers() {
     session_id: sessionId,
     player_id: playerId,
   });
-  const numbers = await openEnvelope(data);
 
-  if (!Array.isArray(numbers)) {
-    throw new Error("Deal response did not decrypt to a number array.");
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.numbers)) return data.numbers;
+  if (hasEnvelope(data)) {
+    const numbers = await openEnvelope(data);
+
+    if (!Array.isArray(numbers)) {
+      throw new Error("Deal response did not decrypt to a number array.");
+    }
+
+    return numbers;
   }
 
-  return numbers;
+  throw new Error("Deal response did not include numbers.");
 }
 
 export async function submitChoice(currentRound, chosenNumber) {
@@ -395,23 +463,59 @@ export async function submitChoice(currentRound, chosenNumber) {
     throw new Error("Chosen number is required.");
   }
 
-  const envelope = await buildEnvelope(String(chosenNumber));
+  if (session.playerPrivateKey && session.housePublicKey && session.aesKey) {
+    const envelope = await buildEnvelope(String(chosenNumber));
 
-  await requestJson("/game/submit", {
-    session_id: session.sessionId,
-    player_id: session.playerId,
-    envelope,
-  });
-  session.nextSendSeq += 1;
-  
-  const roundResultEnvelope = await pollJson("/game/round-result", {
+    try {
+      await requestJson("/game/submit", {
+        session_id: session.sessionId,
+        player_id: session.playerId,
+        envelope,
+      });
+      session.nextSendSeq += 1;
+    } catch (err) {
+      throw err;
+    }
+  } else {
+    const plainSubmitBody = {
+      session_id: session.sessionId,
+      player_id: session.playerId,
+      round: currentRound,
+      choice: chosenNumber,
+    };
+
+    try {
+      const submitData = await requestJson("/game/submit", plainSubmitBody);
+
+      if (
+        submitData?.opponent_choice !== undefined ||
+        submitData?.P1_choice !== undefined ||
+        submitData?.P2_choice !== undefined ||
+        submitData?.winner ||
+        submitData?.result
+      ) {
+        return normalizeRoundResult(submitData, session.playerId);
+      }
+    } catch (err) {
+      if (err.status === 422 && err.message.includes("envelope")) {
+        throw new Error(
+          "Encrypted choice submission requires playerPrivateKey, housePublicKey, and a session AES key. " +
+          "Pass those values to joinSession before submitting encrypted choices."
+        );
+      }
+
+      throw err;
+    }
+  }
+
+  const roundResult = await pollJson("/game/round-result", {
     session_id: session.sessionId,
     player_id: session.playerId,
     round: currentRound,
   });
-  const roundResult = await openEnvelope(roundResultEnvelope);
+  const payload = hasEnvelope(roundResult) ? await openEnvelope(roundResult) : roundResult;
 
-  return normalizeRoundResult(roundResult, session.playerId);
+  return normalizeRoundResult(payload, session.playerId);
 }
 
 export async function getResult() {
@@ -420,7 +524,7 @@ export async function getResult() {
     session_id: session.sessionId,
     player_id: session.playerId,
   });
-  const payload = await openEnvelope(data);
+  const payload = hasEnvelope(data) ? await openEnvelope(data) : data;
 
   if (!payload || typeof payload !== "object") {
     throw new Error("Final result response was not valid JSON.");
@@ -429,28 +533,20 @@ export async function getResult() {
   return {
     ...payload,
     result: payload.winner ? translateWinner(payload.winner, session.playerId) : payload.result,
-    sessionKey: "session-ended",
+    sessionKey: payload.sessionKey || payload.session_key || "session-ended",
   };
 }
 
 export async function leaveSession() {
-  // Clear local state first so it always happens, even if the backend
-  // already destroyed this session (404) or the request fails for any reason.
-  const session = currentSession;
+  const session = requireSession();
+  const result = await requestJson("/game/leave", {
+    session_id: session.sessionId,
+    player_id: session.playerId,
+  });
+
   currentSession = null;
   gameStarted = false;
-
-  if (!session?.sessionId) return { status: "no active session" };
-
-  try {
-    return await requestJson("/game/leave", {
-      session_id: session.sessionId,
-      player_id: session.playerId,
-    });
-  } catch (err) {
-    // Session was already gone or unreachable — local state is already cleared.
-    return { status: "session already destroyed" };
-  }
+  return result;
 }
 
 function delay(ms) {
