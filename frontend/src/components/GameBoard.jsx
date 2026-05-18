@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import * as api from "../api";
 
 const styles = {
@@ -197,12 +197,11 @@ export default function GameBoard({ onGameOver = () => {} }) {
   const [log,           setLog]           = useState([]);
   const [error,         setError]         = useState(null);
 
-  // Fetch numbers from house at the start of each round
+  // Fetch numbers from house once on mount (house deals all 3 upfront)
+  const dealFetchedRef = useRef(false);
   useEffect(() => {
-    setIsLoadingNums(true);
-    setSelectedIdx(null);
-    setLog([]);
-    setError(null);
+    if (dealFetchedRef.current) return;
+    dealFetchedRef.current = true;
 
     api.getDealtNumbers()
       .then((nums) => {
@@ -210,10 +209,16 @@ export default function GameBoard({ onGameOver = () => {} }) {
         setIsLoadingNums(false);
       })
       .catch((err) => {
-        // Could be a signature verification failure from api.js
         setError(err.message || "Failed to receive numbers from house.");
         setIsLoadingNums(false);
       });
+  }, []);
+
+  // Reset UI state when round advances
+  useEffect(() => {
+    setSelectedIdx(null);
+    setLog([]);
+    setError(null);
   }, [currentRound]);
 
   function addLog(type, msg) {
@@ -247,6 +252,7 @@ export default function GameBoard({ onGameOver = () => {} }) {
         { round: currentRound, mine: chosenNumber, opp: oppPick, result },
       ];
 
+      setNumbers(prev => prev.filter((_, i) => i !== selectedIdx));
       setPlayerScore(newPlayerScore);
       setOpponentScore(newOpponentScore);
       setRoundHistory(newHistory);
